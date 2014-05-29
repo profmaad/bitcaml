@@ -1,9 +1,18 @@
-#use "topfind";;
-#require "unix";;
-#require "sha.sha256";;
+(* #use "topfind";; *)
+(* #require "unix";; *)
+(* #require "sha.sha256";; *)
+(* #require "bitstring";; *)
 
 open Unix
 open Printf
+open Bitstring
+
+type bitcoin_protocol_header = 
+  { magic : int32;
+    command : string;
+    payload_length : int32;
+    checksum : string;
+  };;
 
 let testnet_port = 18333
 let peer_ip_address = "127.0.0.1"
@@ -114,16 +123,76 @@ let receive_message socket =
   received_message
 ;;
 
+let read_string_from_fd fd bytes =
+  let received_string = String.make bytes '\x00' in
+  let bytes_read = read fd received_string 0 bytes in
+  received_string
+;;
+
+let string_from_zeroterminated_string zts =
+  let string_length =
+    try
+      String.index zts '\x00'
+    with Not_found -> 12
+  in
+  String.sub zts 0 string_length
+;;
+
+let parse_bitcoin_header_from_string s =
+  let header_bits = bitstring_of_string s in
+  bitmatch header_bits with
+  | { magic : 4*8 : littleendian;
+      command : 12*8 : string;
+      payload_length : 4*8 : littleendian;
+      checksum : 4*8 : string
+    } ->
+    {
+      magic = magic;
+      command = string_from_zeroterminated_string command;
+      payload_length = payload_length;
+      checksum = checksum;
+    }
+  | { _ } -> eprintf "Received invalid bitcoin protocol header"; raise (Invalid_argument "Invalid bitcoin protocol header")
+;;
+let parse_bitcoin_header_from_fd fd =
+  let bytestring = read_string_from_fd fd (4+12+4+4) in
+  parse_bitcoin_header_from_string bytestring
+;;
+
+let string_of_timestamp timestamp =
+  let time = localtime (Int64.to_float timestamp) in
+  sprintf "%04d-%02d-%02d %02d:%02d:%02d" (time.tm_year + 1900) (time.tm_mon + 1) time.tm_mday time.tm_hour time.tm_min time.tm_sec
+;;
+
+let parse_bitcoin_version_message_from_string s =
+  let message_bits = bitstring_of_string s in
+  bitmatch message_bits with
+  | { version : 4*8 : littleendian;
+      services : 8*8 : littleendian;
+      timestamp : 8*8 : littleendian;
+      addr_recv : 26*8 : bitstring;
+      addr_from : (if version >= (Int32.of_int 106) then 26*8 else 0) : bitstring;
+      nonce : (if version >= (Int32.of_int 106) then 8*8 else 0) : littleendian;
+      user_agent : ((String.length s) - (4+8+8+26+26+8+4 + (if version >= (Int32.of_int 70001) then 1 else 0)))*8 : string;
+      start_height : 4*8 : littleendian;
+      relay : (if version >= (Int32.of_int 70001) then 8 else 0) : littleendian
+    } ->
+    printf "Got version message: %ld\n%Ld\n%s\n%Ld\n%s\n%ld\n%d\n" version services (string_of_timestamp timestamp) nonce user_agent start_height (Int64.to_int relay)
+;;
+let read_payload_from_fd fd header =
+  read_string_from_fd fd (Int32.to_int header.payload_length)
+;;
+
 (* main *)
 let main =
   let client_socket = socket PF_INET SOCK_STREAM 0 in
   let peer_addr = ADDR_INET(inet_addr_of_string peer_ip_address, peer_port) in
   connect client_socket peer_addr;
   send_message client_socket (test_version_message ());
-  receive_message client_socket;
-  (* receive_message client_socket; *)
+  let header = parse_bitcoin_header_from_fd client_socket in
+  printf "Received header: %ld, %s, %ld\n" header.magic header.command header.payload_length;
+  parse_bitcoin_version_message_from_string (read_payload_from_fd client_socket header);
   send_message client_socket (test_verack_message ());
-  receive_message client_socket;
   close client_socket
 ;;
   
