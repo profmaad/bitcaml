@@ -63,7 +63,7 @@ let print_header header =
 let print_version_message m = 
   print_endline "Bitcoin Version Message:";
   Printf.printf "\tProtocol Version: %d\n" m.protocol_version;
-  Printf.printf "\tServices: %s\n" (pp_string_of_services_set m.services);
+  Printf.printf "\tServices: %s\n" (pp_string_of_services_set m.node_services);
   Printf.printf "\tTimestamp: %s\n" (Utils.string_of_unix_tm m.timestamp);
   Printf.printf "\tReceiver: %s\n" (pp_string_of_network_address m.receiver_address);
   Option.may (fun sender_address -> Printf.printf "\tSender: %s\n" (pp_string_of_network_address sender_address)) m.sender_address;

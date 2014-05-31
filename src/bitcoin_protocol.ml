@@ -60,7 +60,7 @@ type header =
 type version_message =
   {
     protocol_version : int;
-    services : ServiceSet.t;
+    node_services : ServiceSet.t;
     timestamp : Unix.tm;
     receiver_address : network_address;
     sender_address : network_address option;

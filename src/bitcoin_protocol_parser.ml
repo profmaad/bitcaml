@@ -86,7 +86,7 @@ let parse_version_message bits =
 	| Some receiver_address ->
 	  (Some {
 	    protocol_version = Int32.to_int version;
-	    services = services_set_of_int64 services;
+	    node_services = services_set_of_int64 services;
 	    timestamp = Unix.localtime (Int64.to_float timestamp);
 	    receiver_address = receiver_address;
 	    sender_address = None;
