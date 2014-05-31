@@ -113,9 +113,11 @@ let parse_version_message bits =
   | Some message -> Some (VersionPayload message)
 ;;
 
+let parse_verack_message bits = Some VerAckPayload;;
+
 let parse_payload payload_string = function
   | VersionCommand -> parse_version_message (Bitstring.bitstring_of_string payload_string)
-  | VerAckCommand -> Some VerAckPayload
+  | VerAckCommand -> parse_verack_message (Bitstring.bitstring_of_string payload_string)
   | _ -> Some (UnknownPayload payload_string)
 ;;
 
