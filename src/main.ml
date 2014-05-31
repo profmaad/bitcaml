@@ -382,6 +382,9 @@ let parse_bitcoin_network_address bits =
   | { _ } -> None
 ;;
 
+(* TODO: var_int parser. turns out, you can correctly parse a var_int by only looking at the initial byte *)
+
+(* TODO: we should instead use two or three separate patterns, or parse them in sequence *)
 let parse_bitcoin_version_message_from_string s =
   let message_bits = bitstring_of_string s in
   bitmatch message_bits with
