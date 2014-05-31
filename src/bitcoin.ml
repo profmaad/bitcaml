@@ -8,6 +8,9 @@ module Protocol = struct
   module Parser = struct
     include Bitcoin_protocol_parser;;
   end
+  module Generator = struct
+    include Bitcoin_protocol_generator;;
+  end
 end
 
 module Crypto = struct

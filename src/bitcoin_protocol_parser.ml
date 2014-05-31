@@ -9,7 +9,7 @@ let parse_header bits =
       checksum : 4*8 : string
     } ->
     {
-      magic = magic_of_int (Int32.to_int magic);
+      magic = magic_of_int32 magic;
       command = command_of_string (Utils.string_from_zeroterminated_string command);
       payload_length = (Int32.to_int payload_length);
       checksum = checksum;
@@ -32,6 +32,42 @@ let parse_network_address bits =
 ;;
 
 (* TODO: var_int parser. turns out, you can correctly parse a var_int by only looking at the initial byte *)
+let parse_varint bits =
+  let parse_tag_byte bits = 
+    bitmatch bits with
+    | { tag : 1*8 : littleendian;
+	rest : -1 : bitstring
+      } -> (Some tag, rest)
+    | { _ } -> (None, bits)
+  in
+  let parse_value bits bytesize =
+    bitmatch bits with
+    | { value : bytesize*8 : littleendian;
+	rest : -1 : bitstring
+      } -> (Some value, rest)
+    | { _ } -> (None, bits)
+  in
+  let tag, rest = parse_tag_byte bits in
+  match tag with
+  | None -> (None, rest)
+  | Some 0xff -> parse_value rest 8
+  | Some 0xfe -> parse_value rest 4
+  | Some 0xfd -> parse_value rest 2
+  | Some x -> (Some (Int64.of_int x), rest)
+;;
+
+(* we should support strings with the full length of MAX(int64) bytes, but due to bitstring requiring the length in BITS in an OCaml int (31 bits, signed), we can only support much much shorter strings *facepalm* *)
+let parse_varstring bits =
+  let length, bits = parse_varint bits in
+  match length with
+  | None -> (None, bits)
+  | Some length ->
+    bitmatch bits with
+    | { value : (Int64.to_int length) * 8 : string;
+	rest : -1 : bitstring
+      } -> (Some value, rest)
+    | { _ } -> (None, bits)
+;;
 
 (* This is kind of convoluted and horrible, but it's only partly our fault - the version message is kind of convoluted and horrible. *)
 let parse_version_message bits =
@@ -67,7 +103,7 @@ let parse_version_message bits =
     bitmatch bits with
     | { addr_from : 26*8 : bitstring;
 	nonce : 8*8 : string;
-	user_agent : ((bitstring_length bits) - (26+8+4 + (if message.protocol_version >= 70001 then 1 else 0))*8) : string; (* TODO: proper var_string parser *)
+	user_agent : ((bitstring_length bits) - (26+8+4 + (if message.protocol_version >= 70001 then 1 else 0))*8) : bitstring; (* we could properly parse a var_string at this position, but that would involve splitting this parser in two again. For version messages, we can determine the length of the var_string so we parse it out as a bitstring here and then extract the actual string below *)
 	start_height : 4*8 : littleendian;
 	rest : -1 : bitstring
       } ->
@@ -79,7 +115,7 @@ let parse_version_message bits =
 	  (Some { message with 
 	    sender_address = Some sender_address;
 	    random_nonce = Some nonce;
-	    user_agent = Some (String.sub user_agent 1 ((String.length user_agent) - 1));
+	    user_agent = fst (parse_varstring user_agent);
 	    start_height = Some (Int32.to_int start_height);
           }, rest)
       )

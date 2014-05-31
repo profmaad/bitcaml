@@ -9,11 +9,13 @@ let short_bitcoin_timestamp () =
 ;;
 
 let construct_bitcoin_message command payload =
-  let magic = Utils.le_bytestring_of_int 0x0709110B 4 in
-  let padded_command = command ^ String.make (12 - String.length command) '\x00' in
-  let length = Utils.le_bytestring_of_int (String.length payload) 4 in
-  let checksum = Bitcoin.Protocol.message_checksum payload in
-  magic ^ padded_command ^ length ^ checksum ^ payload
+  let header = { Bitcoin.Protocol.magic = Bitcoin.Protocol.TestNet3;
+		 Bitcoin.Protocol.command = command;
+		 Bitcoin.Protocol.payload_length = String.length payload;
+		 Bitcoin.Protocol.checksum = Bitcoin.Protocol.message_checksum payload;
+	       } in
+  let header_bitstring = Bitcoin.Protocol.Generator.bitstring_of_header header in
+  (Bitstring.string_of_bitstring header_bitstring) ^ payload
 ;;
 
 let bitcoin_network_addr addr port =
@@ -33,10 +35,10 @@ let test_version_message () =
     "\x00\x00\x00\x00" ^ (*last received block*)
     "\x00" (*don't relay transactions to us*)
   in
-  construct_bitcoin_message "version" payload
+  construct_bitcoin_message Bitcoin.Protocol.VersionCommand payload
 ;;
 let test_verack_message () =
-  construct_bitcoin_message "verack" ""
+  construct_bitcoin_message Bitcoin.Protocol.VerAckCommand ""
 
 let send_message socket message =
   let bytes_written = Unix.write socket message 0 (String.length message) in
@@ -62,6 +64,7 @@ let () =
   let received_message = Bitcoin.Protocol.Parser.read_and_parse_message_from_fd client_socket in
   Option.may Bitcoin.Protocol.PP.print_message received_message;
   send_message client_socket (test_verack_message ());
+  Unix.sleep 1;
   Unix.close client_socket
 ;;
   

@@ -1,6 +1,6 @@
 (* Magic value describing the network to use *)
 type magic = 
-| UnknownMagic of int
+| UnknownMagic of int32
 | MainNetwork
 | TestNet
 | TestNet3
@@ -87,11 +87,17 @@ let message_checksum payload =
   String.sub digest 0 4
 ;;
 
-let magic_of_int = function
-  | 0xD9B4BEF9 -> MainNetwork
-  | 0xDAB5BFFA -> TestNet
-  | 0x0709110B -> TestNet3
+let magic_of_int32 = function
+  | 0xD9B4BEF9l -> MainNetwork
+  | 0xDAB5BFFAl -> TestNet
+  | 0x0709110Bl -> TestNet3
   | i -> UnknownMagic i
+;;
+let int32_of_magic = function
+  | MainNetwork -> 0xD9B4BEF9l
+  | TestNet -> 0xDAB5BFFAl
+  | TestNet3 -> 0x0709110Bl
+  | UnknownMagic i -> i
 ;;
 
 let command_of_string = function
@@ -118,9 +124,39 @@ let command_of_string = function
   | "merkleblock" -> MerkleBlockCommand
   | s -> UnknownCommand s
 ;;
+let string_of_command = function
+  | VersionCommand -> "version"
+  | VerAckCommand -> "verack"
+  | AddrCommand -> "addr"
+  | InvCommand -> "inv"
+  | GetDataCommand -> "getdata"
+  | NotFoundCommand -> "notfound"
+  | GetBlocksCommand -> "getblocks"
+  | GetHeadersCommand -> "getheaders"
+  | TxCommand -> "tx"
+  | BlockCommand -> "block"
+  | HeadersCommand -> "headers"
+  | GetAddrCommand -> "getaddr"
+  | MemPoolCommand -> "mempool"
+  | PingCommand -> "ping"
+  | PongCommand -> "pong"
+  | RejectCommand -> "reject"
+  | AlertCommand -> "alert"
+  | FilterLoadCommand -> "filterload"
+  | FilterAddCommand -> "filteradd"
+  | FilterClearCommand -> "filterclear"
+  | MerkleBlockCommand -> "merkleblock"
+  | UnknownCommand s -> s
+;;
 
 let services_set_of_int64 i = 
   let services_list = ref [] in
   if (Int64.logand i 0x0000000000000001L) > 0L then services_list := NetworkNodeService :: !services_list;
   List.fold_right ServiceSet.add !services_list ServiceSet.empty
+;;
+let int64_of_services_set set =
+  let int64_of_service = function
+    | NetworkNodeService -> 0x0000000000000001L
+  in
+  List.fold_left Int64.logor Int64.zero (List.map int64_of_service (ServiceSet.elements set))
 ;;

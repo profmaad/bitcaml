@@ -48,4 +48,6 @@ let string_from_zeroterminated_string zts =
   in
   String.sub zts 0 string_length
 ;;
-
+let zeropad_string_to_length s length =
+  s ^ (String.make (length - (String.length s)) '\x00')
+;;
