@@ -3,7 +3,7 @@ let bitcoin_protocol_magic = Bitcoin.Protocol.TestNet3
 
 let user_agent = 
   let current_time = Unix.gmtime (Unix.time ()) in
-  Printf.sprintf "\x12/bitcaml:%04d%02d%02d/" (current_time.Unix.tm_year + 1900) (current_time.Unix.tm_mon + 1) current_time.Unix.tm_mday
+  Printf.sprintf "/bitcaml:%04d%02d%02d/" (current_time.Unix.tm_year + 1900) (current_time.Unix.tm_mon + 1) current_time.Unix.tm_mday
 ;;
 
 let testnet_port = 18333

@@ -2,6 +2,12 @@ let may f = function
   | None -> ()
   | Some x -> f x
 ;;
+
+let default default_value = function
+  | None -> default_value
+  | Some x -> x
+;;
+
 let is_none = function
   | None -> true
   | Some x -> false

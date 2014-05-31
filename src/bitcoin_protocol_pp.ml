@@ -70,12 +70,16 @@ let print_version_message m =
   Option.may (fun random_nonce -> print_string "\tRandom Nonce: "; Utils.print_hex_string random_nonce 0; print_newline()) m.random_nonce;
   Option.may (fun user_agent -> Printf.printf "\tUser Agent: %s\n" user_agent) m.user_agent;
   Option.may (fun start_height -> Printf.printf "\tStarting block height: %d\n" start_height) m.start_height;
-  Option.may (fun relay -> Printf.printf "\tRelay transactions?: %s\n" (if relay then "No" else "Yes")) m.relay
+  Option.may (fun relay -> Printf.printf "\tRelay transactions?: %s\n" (if relay then "Yes" else "No")) m.relay
+;;
+
+let print_verack_message () =
+  print_endline "Bitcoin Version Acknowledgement Message";
 ;;
 
 let print_message_payload = function
   | VersionPayload p -> print_version_message p
-  | VerAckPayload -> ()
+  | VerAckPayload -> print_verack_message ()
   | UnknownPayload s -> Printf.printf "Unknown Message Payload (%d bytes)\n" (String.length s)
 ;;
 

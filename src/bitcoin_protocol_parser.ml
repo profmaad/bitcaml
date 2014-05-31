@@ -186,3 +186,14 @@ let read_and_parse_message_from_fd fd =
     | None -> None
     | Some payload -> Some { network = header.magic; payload = payload }
 ;;
+
+let read_and_parse_message_from_string s =
+  let header = parse_header (Bitstring.bitstring_of_string (String.sub s 0 (4+12+4+4))) in
+  let payload_string = String.sub s (4+12+4+4) header.payload_length in
+  if not (verify_message_checksum header payload_string) then None
+  else
+    let payload = parse_payload payload_string header.command in
+    match payload with
+    | None -> None
+    | Some payload -> Some { network = header.magic; payload = payload }
+;;

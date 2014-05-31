@@ -148,6 +148,10 @@ let string_of_command = function
   | MerkleBlockCommand -> "merkleblock"
   | UnknownCommand s -> s
 ;;
+let command_of_message_payload = function
+  | VersionPayload m -> VersionCommand
+  | VerAckPayload -> VerAckCommand
+  | UnknownPayload p -> UnknownCommand "UNKNOWN"
 
 let services_set_of_int64 i = 
   let services_list = ref [] in

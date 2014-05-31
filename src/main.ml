@@ -1,68 +1,65 @@
-let bitcoin_timestamp () =
-  let timestamp = int_of_float (Unix.time ()) in
-  let string_timestamp = Utils.le_bytestring_of_int timestamp 4 in
-  string_timestamp ^ (String.make 4 '\x00')
-;;
-let short_bitcoin_timestamp () =
-  let long_timestamp = bitcoin_timestamp () in
-  String.sub long_timestamp 0 4
-;;
-
-let construct_bitcoin_message command payload =
-  let header = { Bitcoin.Protocol.magic = Bitcoin.Protocol.TestNet3;
-		 Bitcoin.Protocol.command = command;
-		 Bitcoin.Protocol.payload_length = String.length payload;
-		 Bitcoin.Protocol.checksum = Bitcoin.Protocol.message_checksum payload;
-	       } in
-  let header_bitstring = Bitcoin.Protocol.Generator.bitstring_of_header header in
-  (Bitstring.string_of_bitstring header_bitstring) ^ payload
-;;
-
-let bitcoin_network_addr addr port =
-    "\x01\x00\x00\x00\x00\x00\x00\x00" ^
-    "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" ^ addr ^
-    (Utils.bytestring_of_int port 2)
-;;
-
 let test_version_message () =
-  let payload = (Utils.le_bytestring_of_int Config.bitcoin_protocol_version 4) ^ (*version*)
-    "\x01\x00\x00\x00\x00\x00\x00\x00" ^ (*services*)
-    (bitcoin_timestamp ()) ^ (*timestamp*)
-    (bitcoin_network_addr "\xff\xff\x7f\x00\x00\x01" Config.peer_port) ^ (*receiver netaddr struct*)
-    (bitcoin_network_addr "\xff\xff\x7f\x00\x00\x01" Config.peer_port) ^ (*sender netaddr struct*)
-    "\x00\x00\xde\xad\xbe\xef\x00\x00" ^ (*"random" node nonce*)
-    Config.user_agent ^ (*empty user agent string*)
-    "\x00\x00\x00\x00" ^ (*last received block*)
-    "\x00" (*don't relay transactions to us*)
-  in
-  construct_bitcoin_message Bitcoin.Protocol.VersionCommand payload
+  let services_set = Bitcoin.Protocol.ServiceSet.add Bitcoin.Protocol.NetworkNodeService Bitcoin.Protocol.ServiceSet.empty in
+  let localhost_address_string = (String.make 10 '\x00') ^ "\xff\xff" ^ "\127\000\000\001" in
+  let receiver_address = {
+    Bitcoin.Protocol.services = services_set;
+    address = localhost_address_string;
+    port = Config.peer_port;
+  } in
+  let sender_address = receiver_address in
+  let random_nonce = Utils.le_bytestring_of_int64 (Random.int64 Int64.max_int) 8 in
+  let payload = {
+    Bitcoin.Protocol.protocol_version = Config.bitcoin_protocol_version;
+    node_services = services_set;
+    timestamp = Unix.localtime (Unix.time ());
+    receiver_address = receiver_address;
+    sender_address = Some sender_address;
+    random_nonce = Some random_nonce;
+    user_agent = Some Config.user_agent;
+    start_height = Some 0;
+    relay = Some false;
+  } in
+  {
+    Bitcoin.Protocol.network = Bitcoin.Protocol.TestNet3;
+    payload = Bitcoin.Protocol.VersionPayload payload;
+  }
 ;;
 let test_verack_message () =
-  construct_bitcoin_message Bitcoin.Protocol.VerAckCommand ""
+  {
+    Bitcoin.Protocol.network = Bitcoin.Protocol.TestNet3;
+    payload = Bitcoin.Protocol.VerAckPayload;
+  }
+;;
 
+let send_bitstring socket bitstring =
+  let message_string = Bitstring.string_of_bitstring bitstring in
+  Unix.write socket message_string 0 (String.length message_string)
+;;
 let send_message socket message =
-  let bytes_written = Unix.write socket message 0 (String.length message) in
+  let message_bitstring = Bitcoin.Protocol.Generator.bitstring_of_message message in
+  let bytes_written = send_bitstring socket message_bitstring in
   Printf.printf "Send message (%d bytes):\n" bytes_written;
-  Utils.print_hex_string message 16;
+  Bitcoin.Protocol.PP.print_message message;
   print_newline ();
 ;;
+
 let receive_message socket =
-  let received_message = String.make 4096 '\x00' in
-  let bytes_read = Unix.read socket received_message 0 (String.length received_message) in
-  Printf.printf "Received message (%d bytes):\n" bytes_read;
-  Utils.print_hex_string (String.sub received_message 0 bytes_read) 16;
+  let received_message = Bitcoin.Protocol.Parser.read_and_parse_message_from_fd socket in
+  print_endline "Received message:";
+  Option.may Bitcoin.Protocol.PP.print_message received_message;
   print_newline ();
   received_message
 ;;
 
 (* main *)
 let () =
+  Random.self_init ();
   let client_socket = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
   let peer_addr = Unix.ADDR_INET(Unix.inet_addr_of_string Config.peer_ip_address, Config.peer_port) in
   Unix.connect client_socket peer_addr;
   send_message client_socket (test_version_message ());
-  let received_message = Bitcoin.Protocol.Parser.read_and_parse_message_from_fd client_socket in
-  Option.may Bitcoin.Protocol.PP.print_message received_message;
+  ignore (receive_message client_socket);
+  ignore (receive_message client_socket);
   send_message client_socket (test_verack_message ());
   Unix.sleep 1;
   Unix.close client_socket

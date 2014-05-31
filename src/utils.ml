@@ -15,13 +15,13 @@ let reverse_string s =
   reverse_string_acc s "" 0 (String.length s)
 ;;
 
-let bytestring_of_int i bytesize =
+let bytestring_of_int64 i bytesize =
   let rec bytestring_of_int_ i acc byte_index =
-    let shift_distance = 8*byte_index in
-    let mask = 0xff lsl shift_distance in
-    let masked_int = i land mask in
-    let shifted_int = masked_int lsr shift_distance in
-    let byte_char = Char.chr shifted_int in
+    let shift_distance = 8 * byte_index in
+    let mask = Int64.shift_left 0xffL shift_distance in
+    let masked_int = Int64.logand i mask in
+    let shifted_int = Int64.shift_right_logical masked_int shift_distance in
+    let byte_char = Char.chr (Int64.to_int shifted_int) in
     let new_acc = acc ^ (String.make 1 byte_char) in
     match byte_index with
     | 0 -> new_acc
@@ -29,8 +29,8 @@ let bytestring_of_int i bytesize =
   in
   bytestring_of_int_ i "" (bytesize-1)
 ;;
-let le_bytestring_of_int i bytesize =
-  reverse_string (bytestring_of_int i bytesize)
+let le_bytestring_of_int64 i bytesize =
+  reverse_string (bytestring_of_int64 i bytesize)
 ;;
 
 let string_of_unix_tm time =
@@ -51,3 +51,18 @@ let string_from_zeroterminated_string zts =
 let zeropad_string_to_length s length =
   s ^ (String.make (length - (String.length s)) '\x00')
 ;;
+
+let int_of_bool = function
+  | false -> 0
+  | true -> 1
+;;
+
+
+
+
+
+
+
+
+
+
