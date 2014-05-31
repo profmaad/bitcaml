@@ -80,6 +80,6 @@ let print_bitcoin_message_payload = function
 ;;
 
 let print_bitcoin_message m =
-  print_bitcoin_header m.header;
+  Printf.printf "Network: %s\n" (string_of_bitcoin_magic m.network);
   print_bitcoin_message_payload m.payload;
 ;;

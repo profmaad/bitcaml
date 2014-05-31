@@ -97,5 +97,5 @@ let read_and_parse_bitcoin_message_from_fd fd =
     let payload = parse_bitcoin_payload payload_string header.command in
     match payload with
     | None -> None
-    | Some payload -> Some { header = header; payload = payload }
+    | Some payload -> Some { network = header.magic; payload = payload }
 ;;

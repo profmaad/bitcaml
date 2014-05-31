@@ -78,7 +78,7 @@ type bitcoin_message_payload =
 
 type bitcoin_message =
   {
-    header : bitcoin_protocol_header;
+    network : bitcoin_magic;
     payload : bitcoin_message_payload;
   };;
 
