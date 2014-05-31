@@ -51,16 +51,71 @@ let receive_message socket =
   received_message
 ;;
 
+let send_version_message socket = send_message socket (test_version_message ());;
+let send_verack_message socket = send_message socket (test_verack_message ());;
+
+type connection_state =
+| UninitializedState
+| VersionSendState
+| VersionReceivedState
+| VerAckReceivedState
+| VersionVerAckReceivedState
+| InitializedState
+
+let state_entry socket = function
+  | UninitializedState ->
+    print_endline "[FSM] Connection entered uninitialized state.";
+    send_version_message socket;
+    VersionSendState
+  | VersionSendState ->
+    print_endline "[FSM] Connection entered version_send state.";
+    VersionSendState;
+  | VersionReceivedState ->
+    print_endline "[FSM] Connection entered version_received state.";
+    VersionReceivedState
+  | VerAckReceivedState ->
+    print_endline "[FSM] Connection entered verack_received state.";
+    VerAckReceivedState
+  | VersionVerAckReceivedState ->
+    print_endline "[FSM] Connection entered version_and_verack_received state.";
+    send_verack_message socket;
+    InitializedState
+  | InitializedState ->
+    print_endline "[FSM] Connection fully initialized.";
+    InitializedState
+;;
+
+let transition state message = match (state, message.Bitcoin.Protocol.payload) with
+  | VersionSendState, Bitcoin.Protocol.VersionPayload m -> VersionReceivedState
+  | VersionSendState, Bitcoin.Protocol.VerAckPayload -> VerAckReceivedState
+  | VersionReceivedState, Bitcoin.Protocol.VerAckPayload -> VersionVerAckReceivedState
+  | VerAckReceivedState, Bitcoin.Protocol.VersionPayload m -> VersionVerAckReceivedState
+  | state, _ -> state
+;;
+
+let handle_connection socket =
+  let rec connection_fsm state =
+    let new_state = state_entry socket state in
+    if new_state != state then connection_fsm new_state
+    else
+      match state with
+      | InitializedState -> ()
+      | state ->
+	let received_message = receive_message socket in
+	match received_message with
+	| None -> connection_fsm state
+	| Some m -> connection_fsm (transition state m)
+  in
+  connection_fsm UninitializedState
+;;
+
 (* main *)
 let () =
   Random.self_init ();
   let client_socket = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
   let peer_addr = Unix.ADDR_INET(Unix.inet_addr_of_string Config.peer_ip_address, Config.peer_port) in
   Unix.connect client_socket peer_addr;
-  send_message client_socket (test_version_message ());
-  ignore (receive_message client_socket);
-  ignore (receive_message client_socket);
-  send_message client_socket (test_verack_message ());
+  handle_connection client_socket;
   Unix.sleep 1;
   Unix.close client_socket
 ;;
