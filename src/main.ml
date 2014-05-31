@@ -12,7 +12,7 @@ let construct_bitcoin_message command payload =
   let magic = Utils.le_bytestring_of_int 0x0709110B 4 in
   let padded_command = command ^ String.make (12 - String.length command) '\x00' in
   let length = Utils.le_bytestring_of_int (String.length payload) 4 in
-  let checksum = Bitcoin.Protocol.bitcoin_message_checksum payload in
+  let checksum = Bitcoin.Protocol.message_checksum payload in
   magic ^ padded_command ^ length ^ checksum ^ payload
 ;;
 
@@ -59,8 +59,8 @@ let () =
   let peer_addr = Unix.ADDR_INET(Unix.inet_addr_of_string Config.peer_ip_address, Config.peer_port) in
   Unix.connect client_socket peer_addr;
   send_message client_socket (test_version_message ());
-  let received_message = Bitcoin.Protocol.Parser.read_and_parse_bitcoin_message_from_fd client_socket in
-  Option.may Bitcoin.Protocol.PP.print_bitcoin_message received_message;
+  let received_message = Bitcoin.Protocol.Parser.read_and_parse_message_from_fd client_socket in
+  Option.may Bitcoin.Protocol.PP.print_message received_message;
   send_message client_socket (test_verack_message ());
   Unix.close client_socket
 ;;
