@@ -33,35 +33,84 @@ let parse_network_address bits =
 
 (* TODO: var_int parser. turns out, you can correctly parse a var_int by only looking at the initial byte *)
 
-(* TODO: we should instead use two or three separate patterns, or parse them in sequence *)
+(* This is kind of convoluted and horrible, but it's only partly our fault - the version message is kind of convoluted and horrible. *)
 let parse_version_message bits =
-  bitmatch bits with
-  | { version : 4*8 : littleendian;
-      services : 8*8 : littleendian;
-      timestamp : 8*8 : littleendian;
-      addr_recv : 26*8 : bitstring;
-      addr_from : (if version >= (Int32.of_int 106) then 26*8 else 0) : bitstring;
-      nonce : (if version >= (Int32.of_int 106) then 8*8 else 0) : string;
-      user_agent : ((bitstring_length bits) - (4+8+8+26+26+8+4 + (if version >= (Int32.of_int 70001) then 1 else 0))*8) : string;
-      start_height : (if version >= (Int32.of_int 106) then 4*8 else 0) : littleendian;
-      relay : (if version >= (Int32.of_int 70001) then 8 else 0) : littleendian
-    } ->
-    let receiver_address = parse_network_address addr_recv in
-    let sender_address = parse_network_address addr_from in
-    if Option.is_none receiver_address || Option.is_none sender_address then None
-    else
-      Some (VersionPayload {
-	protocol_version = Int32.to_int version;
-	services = services_set_of_int64 services;
-	timestamp = Unix.localtime (Int64.to_float timestamp);
-	receiver_address = Option.get receiver_address;
-	sender_address = Some (Option.get receiver_address);
-	random_nonce = Some nonce;
-	user_agent = Some (String.sub user_agent 1 ((String.length user_agent) - 1));
-	start_height = Some (Int64.to_int start_height);
-	relay = Some (relay > 0L);
-      })
-  | { _ } -> None
+  let parse_version_message_v0 bits =
+    bitmatch bits with
+    | { version : 4*8 : littleendian;
+	services : 8*8 : littleendian;
+	timestamp : 8*8 : littleendian;
+	addr_recv : 26*8 : bitstring;
+	rest : -1 : bitstring
+      } ->
+      let receiver_address = parse_network_address addr_recv in
+      (
+	match receiver_address with
+	| None -> (None, rest)
+	| Some receiver_address ->
+	  (Some {
+	    protocol_version = Int32.to_int version;
+	    services = services_set_of_int64 services;
+	    timestamp = Unix.localtime (Int64.to_float timestamp);
+	    receiver_address = receiver_address;
+	    sender_address = None;
+	    random_nonce = None;
+	    user_agent = None;
+	    start_height = None;
+	    relay = None;
+	  }, rest)
+      )
+    | { _ } -> (None, bits)
+  in
+
+  let parse_version_message_v106 message bits =
+    bitmatch bits with
+    | { addr_from : 26*8 : bitstring;
+	nonce : 8*8 : string;
+	user_agent : ((bitstring_length bits) - (26+8+4 + (if message.protocol_version >= 70001 then 1 else 0))*8) : string; (* TODO: proper var_string parser *)
+	start_height : 4*8 : littleendian;
+	rest : -1 : bitstring
+      } ->
+      let sender_address = parse_network_address addr_from in
+      (
+	match sender_address with
+	| None -> (None, rest)
+	| Some sender_address ->
+	  (Some { message with 
+	    sender_address = Some sender_address;
+	    random_nonce = Some nonce;
+	    user_agent = Some (String.sub user_agent 1 ((String.length user_agent) - 1));
+	    start_height = Some (Int32.to_int start_height);
+          }, rest)
+      )
+    | { _ } -> (Some message, bits)
+  in
+
+  let parse_version_message_v70001 message bits = 
+    bitmatch bits with
+    | { relay : 1*8 : littleendian;
+	rest : -1 : bitstring
+      } -> (Some { message with relay = Some (relay > 0) }, rest)
+    | { _ } -> (Some message, bits)
+  in
+  let message, rest = parse_version_message_v0 bits in
+  match message with
+  | None -> None
+  | Some message when message.protocol_version >= 106 ->
+    let message, rest = parse_version_message_v106 message rest in
+    (
+      match message with
+      | None -> None
+      | Some message when message.protocol_version >= 70001 -> 
+	let message, rest = parse_version_message_v70001 message rest in
+	(
+	  match message with
+	  | None -> None
+	  | Some message -> Some (VersionPayload message)
+	)
+      | Some message -> Some (VersionPayload message)
+    )
+  | Some message -> Some (VersionPayload message)
 ;;
 
 let parse_payload payload_string = function
