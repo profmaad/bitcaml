@@ -93,6 +93,8 @@ let print_getaddr_message () =
   print_endline "Bitcoin Get Addresses Message"
 ;;
 
+let print_inventory_list_message m =
+
 let print_message_payload = function
   | VersionPayload p -> print_version_message p
   | VerAckPayload -> print_verack_message ()

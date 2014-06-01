@@ -78,7 +78,24 @@ type timestamped_network_address =
 
 type addr_message =
   {
-    addresses : timestamped_network_address list
+    addresses : timestamped_network_address list;
+  };;
+
+type inventory_item_type =
+| TransactionIntventoryItem
+| BlockInventoryItem
+| UnknwonInventoryItem of int
+;;
+
+type inventory_item =
+  {
+    inventory_item_type : inventory_item_type;
+    inventory_item_hash : string;
+  };;
+
+type inventory_list_message =
+  {
+    inventory : inventory_item list;
   };;
 
 type message_payload = 
@@ -86,6 +103,9 @@ type message_payload =
 | VerAckPayload
 | AddrPayload of addr_message
 | GetAddrPayload
+| InvPayload of inventory_list_message
+| GetDataPayload of inventory_list_message
+| NotFoundPayload of inventory_list_message
 | UnknownPayload of Bitstring.t
 ;;
 
