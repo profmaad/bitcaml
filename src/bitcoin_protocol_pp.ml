@@ -93,13 +93,38 @@ let print_getaddr_message () =
   print_endline "Bitcoin Get Addresses Message"
 ;;
 
+let pp_string_of_inventory_item_type = function
+  | TransactionInventoryItem -> "Transaction"
+  | BlockInventoryItem -> "Block"
+  | UnknownInventoryItem i -> Printf.sprintf "Unknown (%d)" i
+;;
+
+let pp_string_of_inventory_item item =
+  Printf.sprintf "%s: %s" (pp_string_of_inventory_item_type item.inventory_item_type) item.inventory_item_hash
+;;
+
 let print_inventory_list_message m =
+  let rec print_inventory_list index = function
+    | [] -> ()
+    | item :: items ->
+      Printf.printf "%d:\t%s\n" index (pp_string_of_inventory_item item);
+      print_inventory_list (index+1) items
+  in
+  print_inventory_list 1 m.inventory
+;;
+let print_inventory_list_message_with_header m message_type =
+  Printf.printf "Bitcoin %s Message:\n" message_type;
+  print_inventory_list_message m
+;;
 
 let print_message_payload = function
   | VersionPayload p -> print_version_message p
   | VerAckPayload -> print_verack_message ()
   | AddrPayload p -> print_addr_message p
   | GetAddrPayload -> print_getaddr_message ()
+  | InvPayload p -> print_inventory_list_message_with_header p "Inventory"
+  | GetDataPayload p -> print_inventory_list_message_with_header p "Get Data"
+  | NotFoundPayload p -> print_inventory_list_message_with_header p "Not Found"
   | UnknownPayload s -> Printf.printf "Unknown Message Payload (%d bytes)\n" (Bitstring.bitstring_length s)
 ;;
 

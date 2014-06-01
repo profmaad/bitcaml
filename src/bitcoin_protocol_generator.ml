@@ -84,11 +84,37 @@ let bitstring_of_addr_message m =
 
 let bitstring_of_getaddr_message () = empty_bitstring;;
 
+let bitstring_of_inventory_item item =
+  BITSTRING {
+    int32_of_inventory_item_type item.inventory_item_type : 4*8 : littleendian;
+    item.inventory_item_hash : 32*8 : string
+  }
+;;
+let bitstring_of_inventory_list_message m =
+  let rec bitstrings_of_inventory_items = function
+    | [] -> []
+    | item :: items -> 
+      let item_bitstring = bitstring_of_inventory_item item in
+      item_bitstring :: bitstrings_of_inventory_items items
+  in
+  let item_count_varint_bitstring = varint_bitstring_of_int64 (Int64.of_int (List.length m.inventory)) in
+  BITSTRING {
+    item_count_varint_bitstring : -1 : bitstring;
+    concat (bitstrings_of_inventory_items m.inventory) : -1 : bitstring
+  }
+;;
+let bitstring_of_inv_message m = bitstring_of_inventory_list_message m;;
+let bitstring_of_getdata_message m = bitstring_of_inventory_list_message m;;
+let bitstring_of_notfound_message m = bitstring_of_inventory_list_message m;;
+
 let bitstring_of_payload = function
   | VersionPayload m -> bitstring_of_version_message m
   | VerAckPayload -> bitstring_of_verack_message ()
   | AddrPayload m -> bitstring_of_addr_message m
   | GetAddrPayload -> bitstring_of_getaddr_message ()
+  | InvPayload m -> bitstring_of_inv_message m
+  | GetDataPayload m -> bitstring_of_getdata_message m
+  | NotFoundPayload m -> bitstring_of_notfound_message m
   | UnknownPayload bs -> bs
 ;;
 

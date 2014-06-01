@@ -82,9 +82,9 @@ type addr_message =
   };;
 
 type inventory_item_type =
-| TransactionIntventoryItem
+| TransactionInventoryItem
 | BlockInventoryItem
-| UnknwonInventoryItem of int
+| UnknownInventoryItem of int
 ;;
 
 type inventory_item =
@@ -182,10 +182,13 @@ let string_of_command = function
   | UnknownCommand s -> s
 ;;
 let command_of_message_payload = function
-  | VersionPayload m -> VersionCommand
+  | VersionPayload p -> VersionCommand
   | VerAckPayload -> VerAckCommand
-  | AddrPayload m -> AddrCommand
+  | AddrPayload p -> AddrCommand
   | GetAddrPayload -> GetAddrCommand
+  | InvPayload p -> InvCommand
+  | GetDataPayload p -> GetDataCommand
+  | NotFoundPayload p -> NotFoundCommand
   | UnknownPayload p -> UnknownCommand "UNKNOWN"
 
 let services_set_of_int64 i = 
@@ -199,3 +202,12 @@ let int64_of_services_set set =
   in
   List.fold_left Int64.logor Int64.zero (List.map int64_of_service (ServiceSet.elements set))
 ;;
+
+let inventory_item_type_of_int32 = function
+  | 0x1l -> TransactionInventoryItem
+  | 0x2l -> BlockInventoryItem
+  | i -> UnknownInventoryItem (Int32.to_int i)
+let int32_of_inventory_item_type = function
+  | TransactionInventoryItem -> 0x1l
+  | BlockInventoryItem -> 0x2l
+  | UnknownInventoryItem i -> (Int32.of_int i)

@@ -159,17 +159,19 @@ let parse_addr_message protocol_version bits =
 	  network_address_struct : 26*8 : bitstring;
 	  rest : -1 : bitstring
 	} ->
-	match parse_network_address network_address_struct with
+	( match parse_network_address network_address_struct with
 	| None -> []
 	| Some network_address ->
 	  {
 	    address_timestamp = if timestamp_size = 0 then None else Some (Utils.unix_tm_of_int64 timestamp);
 	    network_address = network_address;
 	  } :: parse_addresses timestamp_size count (Int64.add index 1L) rest
+	)
+      | { _ } -> []
   in
-	
+  
   match parse_varint bits with
-  | None, rest -> Some (UnknownPayload bits)
+  | None, rest -> None
   | Some address_count, bits ->
     let timestamp_size = if protocol_version >= 31402 then 4*8 else 0 in
     Some (AddrPayload {
@@ -179,11 +181,51 @@ let parse_addr_message protocol_version bits =
 
 let parse_getaddr_message bits = Some GetAddrPayload;;
 
+let parse_inventory_list_message bits =
+  let rec parse_inventory_list count index bits =
+    if index >= count then [] else
+      bitmatch bits with
+      | { item_type : 4*8 : littleendian;
+	  hash : 32*8 : string;
+	  rest : -1 : bitstring
+	} ->
+	{
+	  inventory_item_type = inventory_item_type_of_int32 item_type;
+	  inventory_item_hash = hash;
+	} :: parse_inventory_list count (Int64.add index 1L) rest
+      | { _ } -> []
+  in	
+  match parse_varint bits with
+  | None, rest -> None
+  | Some inventory_count, bits ->
+    Some {
+      inventory = parse_inventory_list inventory_count 0L bits;
+    }
+;;
+let parse_inv_message bits =
+  match parse_inventory_list_message bits with
+  | None -> None
+  | Some inventory -> Some (InvPayload inventory)
+;;
+let parse_getdata_message bits =
+  match parse_inventory_list_message bits with
+  | None -> None
+  | Some inventory -> Some (GetDataPayload inventory)
+;;
+let parse_notfound_message bits =
+  match parse_inventory_list_message bits with
+  | None -> None
+  | Some inventory -> Some (NotFoundPayload inventory)
+;;
+
 let parse_payload protocol_version payload_bitstring = function
   | VersionCommand -> parse_version_message payload_bitstring
   | VerAckCommand -> parse_verack_message payload_bitstring
   | AddrCommand -> parse_addr_message protocol_version payload_bitstring
   | GetAddrCommand -> parse_getaddr_message payload_bitstring
+  | InvCommand -> parse_inv_message payload_bitstring
+  | GetDataCommand -> parse_getdata_message payload_bitstring
+  | NotFoundCommand -> parse_notfound_message payload_bitstring
   | _ -> Some (UnknownPayload payload_bitstring)
 ;;
 
