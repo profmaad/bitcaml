@@ -74,13 +74,31 @@ let print_version_message m =
 ;;
 
 let print_verack_message () =
-  print_endline "Bitcoin Version Acknowledgement Message";
+  print_endline "Bitcoin Version Acknowledgement Message"
+;;
+
+let print_addr_message m =
+  let rec print_addresses index = function
+    | [] -> ()
+    | address :: addresses ->
+      Printf.printf "%d:\t%s\n" index (pp_string_of_network_address address.network_address);
+      Option.may (fun timestamp -> Printf.printf "\t(Last seen: %s)\n" (Utils.string_of_unix_tm timestamp)) address.address_timestamp;
+      print_addresses (index+1) addresses
+  in
+  Printf.printf "Bitcoin Address Message (%d addresses):\n" (List.length m.addresses);
+  print_addresses 1 m.addresses
+;;
+
+let print_getaddr_message () =
+  print_endline "Bitcoin Get Addresses Message"
 ;;
 
 let print_message_payload = function
   | VersionPayload p -> print_version_message p
   | VerAckPayload -> print_verack_message ()
-  | UnknownPayload s -> Printf.printf "Unknown Message Payload (%d bytes)\n" (String.length s)
+  | AddrPayload p -> print_addr_message p
+  | GetAddrPayload -> print_getaddr_message ()
+  | UnknownPayload s -> Printf.printf "Unknown Message Payload (%d bytes)\n" (Bitstring.bitstring_length s)
 ;;
 
 let print_message m =

@@ -33,11 +33,19 @@ let le_bytestring_of_int64 i bytesize =
   reverse_string (bytestring_of_int64 i bytesize)
 ;;
 
+
+let unix_tm_of_int64 timestamp = 
+  Unix.localtime (Int64.to_float timestamp)
+;;
+let int64_of_unix_tm unix_tm = 
+  let timestamp, _ = Unix.mktime unix_tm in
+  Int64.of_float timestamp
+;;
 let string_of_unix_tm time =
   Printf.sprintf "%04d-%02d-%02d %02d:%02d:%02d" (time.Unix.tm_year + 1900) (time.Unix.tm_mon + 1) time.Unix.tm_mday time.Unix.tm_hour time.Unix.tm_min time.Unix.tm_sec
 ;;
 let string_of_timestamp timestamp =
-  string_of_unix_tm (Unix.localtime (Int64.to_float timestamp))
+  string_of_unix_tm (unix_tm_of_int64 timestamp)
 ;;
 
 let string_from_zeroterminated_string zts =

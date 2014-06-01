@@ -8,6 +8,11 @@ let default default_value = function
   | Some x -> x
 ;;
 
+let default_f default_f f = function
+  | None -> default_f ()
+  | Some x -> f x
+;;
+
 let is_none = function
   | None -> true
   | Some x -> false

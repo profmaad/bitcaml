@@ -70,10 +70,23 @@ type version_message =
     relay : bool option;
   };;
 
+type timestamped_network_address =
+  {
+    address_timestamp : Unix.tm option;
+    network_address : network_address;
+  }
+
+type addr_message =
+  {
+    addresses : timestamped_network_address list
+  };;
+
 type message_payload = 
 | VersionPayload of version_message
 | VerAckPayload
-| UnknownPayload of string
+| AddrPayload of addr_message
+| GetAddrPayload
+| UnknownPayload of Bitstring.t
 ;;
 
 type message =
@@ -151,6 +164,8 @@ let string_of_command = function
 let command_of_message_payload = function
   | VersionPayload m -> VersionCommand
   | VerAckPayload -> VerAckCommand
+  | AddrPayload m -> AddrCommand
+  | GetAddrPayload -> GetAddrCommand
   | UnknownPayload p -> UnknownCommand "UNKNOWN"
 
 let services_set_of_int64 i = 

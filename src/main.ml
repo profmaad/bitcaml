@@ -43,8 +43,8 @@ let send_message socket message =
   print_newline ();
 ;;
 
-let receive_message socket =
-  let received_message = Bitcoin.Protocol.Parser.read_and_parse_message_from_fd socket in
+let receive_message protocol_version socket =
+  let received_message = Bitcoin.Protocol.Parser.read_and_parse_message_from_fd protocol_version socket in
   print_endline "Received message:";
   Option.may Bitcoin.Protocol.PP.print_message received_message;
   print_newline ();
@@ -94,6 +94,7 @@ let transition state message = match (state, message.Bitcoin.Protocol.payload) w
 ;;
 
 let handle_connection socket =
+  let protocol_version = ref 0 in
   let rec connection_fsm state =
     let new_state = state_entry socket state in
     if new_state != state then connection_fsm new_state
@@ -101,12 +102,30 @@ let handle_connection socket =
       match state with
       | InitializedState -> ()
       | state ->
-	let received_message = receive_message socket in
+	let received_message = receive_message !protocol_version socket in
 	match received_message with
 	| None -> connection_fsm state
+	| Some { Bitcoin.Protocol.network = network; payload = Bitcoin.Protocol.VersionPayload p } as m ->
+	  protocol_version := p.Bitcoin.Protocol.protocol_version;
+	  connection_fsm (transition state (Option.get m))
 	| Some m -> connection_fsm (transition state m)
   in
-  connection_fsm UninitializedState
+  connection_fsm UninitializedState;
+  !protocol_version
+;;
+
+let test_getaddr_message socket =
+  {
+    Bitcoin.Protocol.network = Bitcoin.Protocol.TestNet3;
+    payload = Bitcoin.Protocol.GetAddrPayload;
+  }
+;;
+let send_getaddr_message socket = send_message socket (test_getaddr_message ());;
+
+let exchange_addresses protocol_version socket =
+  send_getaddr_message socket;
+  let addresses_message = receive_message protocol_version socket in
+  Option.default_f (fun () -> print_endline "No valid addresses received.") Bitcoin.Protocol.PP.print_message addresses_message
 ;;
 
 (* main *)
@@ -115,7 +134,9 @@ let () =
   let client_socket = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
   let peer_addr = Unix.ADDR_INET(Unix.inet_addr_of_string Config.peer_ip_address, Config.peer_port) in
   Unix.connect client_socket peer_addr;
-  handle_connection client_socket;
+  let peer_protocol_version = handle_connection client_socket in
+  Printf.printf "Peer is running protocol version %d\n" peer_protocol_version;
+  exchange_addresses peer_protocol_version client_socket;
   Unix.sleep 1;
   Unix.close client_socket
 ;;

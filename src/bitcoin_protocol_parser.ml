@@ -87,7 +87,7 @@ let parse_version_message bits =
 	  (Some {
 	    protocol_version = Int32.to_int version;
 	    node_services = services_set_of_int64 services;
-	    timestamp = Unix.localtime (Int64.to_float timestamp);
+	    timestamp = Utils.unix_tm_of_int64 timestamp;
 	    receiver_address = receiver_address;
 	    sender_address = None;
 	    random_nonce = None;
@@ -151,10 +151,40 @@ let parse_version_message bits =
 
 let parse_verack_message bits = Some VerAckPayload;;
 
-let parse_payload payload_string = function
-  | VersionCommand -> parse_version_message (Bitstring.bitstring_of_string payload_string)
-  | VerAckCommand -> parse_verack_message (Bitstring.bitstring_of_string payload_string)
-  | _ -> Some (UnknownPayload payload_string)
+let parse_addr_message protocol_version bits =
+  let rec parse_addresses timestamp_size count index bits =
+    if index >= count then [] else
+      bitmatch bits with
+      | { timestamp : timestamp_size : littleendian;
+	  network_address_struct : 26*8 : bitstring;
+	  rest : -1 : bitstring
+	} ->
+	match parse_network_address network_address_struct with
+	| None -> []
+	| Some network_address ->
+	  {
+	    address_timestamp = if timestamp_size = 0 then None else Some (Utils.unix_tm_of_int64 timestamp);
+	    network_address = network_address;
+	  } :: parse_addresses timestamp_size count (Int64.add index 1L) rest
+  in
+	
+  match parse_varint bits with
+  | None, rest -> Some (UnknownPayload bits)
+  | Some address_count, bits ->
+    let timestamp_size = if protocol_version >= 31402 then 4*8 else 0 in
+    Some (AddrPayload {
+      addresses = parse_addresses timestamp_size address_count 0L bits;
+    })
+;;
+
+let parse_getaddr_message bits = Some GetAddrPayload;;
+
+let parse_payload protocol_version payload_bitstring = function
+  | VersionCommand -> parse_version_message payload_bitstring
+  | VerAckCommand -> parse_verack_message payload_bitstring
+  | AddrCommand -> parse_addr_message protocol_version payload_bitstring
+  | GetAddrCommand -> parse_getaddr_message payload_bitstring
+  | _ -> Some (UnknownPayload payload_bitstring)
 ;;
 
 let read_string_from_fd fd bytes =
@@ -176,23 +206,23 @@ let verify_message_checksum header payload_string  =
   header.checksum = payload_checksum
 ;;
 
-let read_and_parse_message_from_fd fd =
+let read_and_parse_message_from_fd protocol_version fd =
   let header = parse_header_from_fd fd in
   let payload_string = read_payload_from_fd fd header in
   if not (verify_message_checksum header payload_string) then None
   else
-    let payload = parse_payload payload_string header.command in
+    let payload = parse_payload protocol_version (Bitstring.bitstring_of_string payload_string) header.command in
     match payload with
     | None -> None
     | Some payload -> Some { network = header.magic; payload = payload }
 ;;
 
-let read_and_parse_message_from_string s =
+let read_and_parse_message_from_string protocol_version s =
   let header = parse_header (Bitstring.bitstring_of_string (String.sub s 0 (4+12+4+4))) in
   let payload_string = String.sub s (4+12+4+4) header.payload_length in
   if not (verify_message_checksum header payload_string) then None
   else
-    let payload = parse_payload payload_string header.command in
+    let payload = parse_payload protocol_version (Bitstring.bitstring_of_string payload_string) header.command in
     match payload with
     | None -> None
     | Some payload -> Some { network = header.magic; payload = payload }
