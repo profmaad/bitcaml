@@ -69,8 +69,15 @@ let le_bytestring_of_int64 i bytesize =
 ;;
 
 
+let unix_tm_of_int32 timestamp = 
+  Unix.localtime (Int32.to_float timestamp)
+;;
 let unix_tm_of_int64 timestamp = 
   Unix.localtime (Int64.to_float timestamp)
+;;
+let int32_of_unix_tm unix_tm = 
+  let timestamp, _ = Unix.mktime unix_tm in
+  Int32.of_float timestamp
 ;;
 let int64_of_unix_tm unix_tm = 
   let timestamp, _ = Unix.mktime unix_tm in
