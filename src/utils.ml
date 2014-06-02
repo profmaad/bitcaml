@@ -1,9 +1,22 @@
+let map_string f s =
+  let rec map_string_ f s position length =
+    if position >= length then []
+    else
+      (f s.[position]) :: map_string_ f s (position + 1) length
+  in
+  map_string_ f s 0 (String.length s)
+;;
+
 let print_hex_string s line_length =
   let hex_iterator index c =
     if (index > 0) && (line_length > 0) && ((index mod line_length) = 0) then print_newline ();
     Printf.printf "%02x " (int_of_char c);
   in
-  String.iteri hex_iterator s;
+  String.iteri hex_iterator s
+;;
+let hex_string_of_hash_string s =
+  let hex_mapper c = Printf.sprintf "%02x" (int_of_char c) in
+  String.concat "" (map_string hex_mapper s)
 ;;
 
 let reverse_string s =
@@ -13,6 +26,20 @@ let reverse_string s =
     else reverse_string_acc s ((String.make 1 s.[index]) ^ acc) (index+1) length
   in
   reverse_string_acc s "" 0 (String.length s)
+;;
+let reverse_hash_string s =
+  let rec blit_reverse_hash_string src dst length byte_index =
+    if byte_index*2 < length then (
+      String.blit src (byte_index*2) dst (length - ((byte_index + 1) * 2)) 2;
+      blit_reverse_hash_string src dst length (byte_index + 1)
+    )
+    else dst
+  in
+  let length = String.length s in
+  if (length mod 2) != 0 then raise (Invalid_argument "Input length not a multiple of 2")
+  else
+    let dst = String.make length '\x00' in
+    blit_reverse_hash_string s dst length 0
 ;;
 
 let bytestring_of_int64 i bytesize =
