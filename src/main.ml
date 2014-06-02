@@ -44,11 +44,18 @@ let send_message socket message =
 ;;
 
 let receive_message protocol_version socket =
+  let print_received_message_type m =
+    Printf.printf "Received %s message\n" (Bitcoin.Protocol.PP.pp_string_of_command (Bitcoin.Protocol.command_of_message_payload m.Bitcoin.Protocol.payload))
+  in
   let received_message = Bitcoin.Protocol.Parser.read_and_parse_message_from_fd protocol_version socket in
-  print_endline "Received message:";
-  Option.may Bitcoin.Protocol.PP.print_message received_message;
-  print_newline ();
+  Option.may print_received_message_type received_message;
   received_message
+;;
+let rec receive_message_with_command command protocol_version socket =
+  match receive_message protocol_version socket with
+  | None -> None
+  | Some m when (Bitcoin.Protocol.command_of_message_payload m.Bitcoin.Protocol.payload) = command -> Some m
+  | Some m -> receive_message_with_command command protocol_version socket
 ;;
 
 let send_version_message socket = send_message socket (test_version_message ());;
@@ -128,6 +135,49 @@ let exchange_addresses protocol_version socket =
   Option.default_f (fun () -> print_endline "No valid addresses received.") Bitcoin.Protocol.PP.print_message addresses_message
 ;;
 
+let construct_block_locator_list_message protocol_version hash_stop known_block_hashes =
+  let rec select_block_hashes step_size step count hashes = 
+    let next_step_size = if count >= 10 then step_size*2 else step_size in
+    match hashes, step with
+    | [], _ -> []
+    | hash :: [], _ -> [hash] (* always include the last hash (the genesis block hash) as an anchor *)
+    | hash :: hashes, 0 -> hash :: (select_block_hashes next_step_size (next_step_size - 1) (count + 1) hashes)
+    | hash :: hashes, x -> select_block_hashes step_size (step - 1) count hashes
+  in
+  let block_locator_hashes = select_block_hashes 1 0 0 known_block_hashes in
+  {
+    Bitcoin.Protocol.block_protocol_version = protocol_version;
+    block_locator_hashes = block_locator_hashes;
+    block_locator_hash_stop = hash_stop;
+  }
+;;
+
+let rec download_block_chain protocol_version known_block_hashes socket =
+  let rec block_hashes_of_inventory = function
+    | [] -> []
+    | { Bitcoin.Protocol.inventory_item_type = Bitcoin.Protocol.BlockInventoryItem;
+	inventory_item_hash = hash; } :: inventory ->
+      hash :: (block_hashes_of_inventory inventory)
+    | item :: inventory -> block_hashes_of_inventory inventory
+  in
+  let get_blocks_message = {
+    Bitcoin.Protocol.network = Bitcoin.Protocol.TestNet3;
+    payload = Bitcoin.Protocol.GetBlocksPayload (construct_block_locator_list_message protocol_version (String.make 32 '\x00') known_block_hashes);
+  } in
+  send_message socket get_blocks_message;
+  match receive_message_with_command Bitcoin.Protocol.InvCommand protocol_version socket with
+  | None -> print_endline "No valid block hashes received."
+  | Some { Bitcoin.Protocol.network = Bitcoin.Protocol.TestNet3;
+	   payload = Bitcoin.Protocol.InvPayload inventory } ->
+    let new_hashes = block_hashes_of_inventory inventory.Bitcoin.Protocol.inventory in
+    let known_block_hashes = new_hashes @ known_block_hashes in
+    Printf.printf "Received %d new block hashes, now have a total of %d block hashes.\n" (List.length new_hashes) (List.length known_block_hashes);
+    download_block_chain protocol_version known_block_hashes socket   
+  | Some m ->
+    print_endline "Received unexpected message:";
+    Bitcoin.Protocol.PP.print_message m
+;;
+
 (* main *)
 let () =
   Random.self_init ();
@@ -136,7 +186,8 @@ let () =
   Unix.connect client_socket peer_addr;
   let peer_protocol_version = handle_connection client_socket in
   Printf.printf "Peer is running protocol version %d\n" peer_protocol_version;
-  exchange_addresses peer_protocol_version client_socket;
+  (* exchange_addresses peer_protocol_version client_socket; *)
+  download_block_chain peer_protocol_version [Config.testnet3_genesis_block_hash] client_socket;
   Unix.sleep 1;
   Unix.close client_socket
 ;;
