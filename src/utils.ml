@@ -14,6 +14,14 @@ let print_hex_string s line_length =
   in
   String.iteri hex_iterator s
 ;;
+let print_indented_hex_string s line_length indent_level =
+  let hex_iterator index c =
+    if (index > 0) && (line_length > 0) && ((index mod line_length) = 0) then print_string ("\n" ^ (String.make indent_level '\t'));
+    Printf.printf "%02x " (int_of_char c);
+  in
+  print_string (String.make indent_level '\t');
+  String.iteri hex_iterator s
+;;
 let hex_string_of_hash_string s =
   let hex_mapper c = Printf.sprintf "%02x" (int_of_char c) in
   String.concat "" (map_string hex_mapper s)
