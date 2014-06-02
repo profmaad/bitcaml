@@ -133,7 +133,51 @@ let print_block_locator_list_message m =
 let print_block_locator_list_message_with_header m message_type =
   Printf.printf "Bitcoin %s Message:\n" message_type;
   print_block_locator_list_message m
-;;  
+;;
+
+let pp_string_of_transaction_lock_time = function
+  | AlwaysLockedTransaction -> "Always locked"
+  | BlockLockedTransaction i -> Printf.sprintf "block height %lu" i
+  | TimestampLockedTransaction timestamp -> Utils.string_of_unix_tm timestamp
+;;
+
+let pp_string_of_transaction_outpoint outpoint =
+  Printf.sprintf "%s #%d" (Utils.hex_string_of_hash_string outpoint.referenced_transaction_hash) outpoint.transaction_output_index
+;;
+
+let pp_string_of_output_value value =
+  Printf.sprintf "%f BTC" ((Int64.to_float value) /. satoshis_per_bitoin)
+;;
+
+let print_transaction transaction =
+  let rec print_transaction_inputs index = function
+    | [] -> ()
+    | input :: inputs ->
+      Printf.printf "\t%d:\tReferenced output: %s\n" index (pp_string_of_transaction_outpoint input.previous_transaction_output);
+      Printf.printf "\t\tSequence Number: %d\n" input.transaction_sequence_number;
+      Printf.printf "\t\tSignature script:\n"; Utils.print_indented_hex_string input.signature_script 0 2;
+      print_newline ();
+      print_transaction_inputs (index + 1) inputs
+  in
+  let rec print_transaction_outputs index = function
+    | [] -> ()
+    | output :: outputs ->
+      Printf.printf "\t%d:\tValue: %s\n" index (pp_string_of_output_value output.transaction_output_value);
+      Printf.printf "\t\tOutput script:\n"; Utils.print_indented_hex_string output.output_script 0 2;
+      print_newline ();
+      print_transaction_outputs (index + 1) outputs
+  in
+  Printf.printf "\tData Format Version: %d\n" transaction.transaction_data_format_version;
+  Printf.printf "\tInputs (%d entries)\n" (List.length transaction.transaction_inputs);
+  print_transaction_inputs 1 transaction.transaction_inputs;
+  Printf.printf "\tOutputs (%d entries)\n" (List.length transaction.transaction_outputs);
+  print_transaction_outputs 1 transaction.transaction_outputs;
+  Printf.printf "\tLocked until: %s\n" (pp_string_of_transaction_lock_time transaction.transaction_lock_time)
+;;
+let print_tx_message m =
+  print_endline "Bitcoin Transaction Message:";
+  print_transaction m
+;;
 
 let print_message_payload = function
   | VersionPayload p -> print_version_message p
@@ -145,6 +189,7 @@ let print_message_payload = function
   | NotFoundPayload p -> print_inventory_list_message_with_header p "Not Found"
   | GetBlocksPayload p -> print_block_locator_list_message_with_header p "Get Blocks"
   | GetHeadersPayload p -> print_block_locator_list_message_with_header p "Get Headers"
+  | TxPayload p -> print_tx_message p
   | UnknownPayload s -> Printf.printf "Unknown Message Payload (%d bytes)\n" (Bitstring.bitstring_length s)
 ;;
 

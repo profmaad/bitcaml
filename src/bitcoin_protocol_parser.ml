@@ -219,14 +219,14 @@ let parse_notfound_message bits =
 ;;
 
 let parse_block_locator_list_message bits =
-  let rec parse_block_locator_list count index bits =
-    if index >= count then [] else
+  let rec parse_block_locator_list count index acc bits =
+    if index >= count then (acc, bits) else
       bitmatch bits with
       | { block_locator_hash : 32*8 : string;
 	  rest : -1 : bitstring
 	} ->
-	block_locator_hash :: parse_block_locator_list count (Int64.add index 1L) rest
-      | { _ } -> []
+	parse_block_locator_list count (Int64.add index 1L) (block_locator_hash :: acc) rest
+      | { _ } -> (acc, bits)
   in
   let protocol_version, bits = bitmatch bits with
     | { version : 4*8 : littleendian;
@@ -240,7 +240,7 @@ let parse_block_locator_list_message bits =
     match parse_varint bits with
     | None, rest -> None
     | Some block_locator_count, bits ->
-      let block_locator_list = parse_block_locator_list block_locator_count 0L bits in
+      let block_locator_list, bits = parse_block_locator_list block_locator_count 0L [] bits in
       bitmatch bits with
       | { block_locator_hash_stop : 32*8 : string } ->
 	Some {
@@ -261,6 +261,81 @@ let parse_getheaders_message bits =
   | Some block_locator_list_message -> Some (GetHeadersPayload block_locator_list_message)
 ;;
 
+let parse_transaction bits =
+  let rec parse_inputs count index acc bits = 
+    if index >= count then (acc, bits) else
+      bitmatch bits with
+      | { outpoint_hash : 32*8 : string;
+	  outpoint_index : 4*8 : littleendian;
+	  rest : -1 : bitstring
+	} ->
+	( match parse_varstring rest with
+	| None, bits -> (acc, bits)
+	| Some signature_script, bits ->
+	  bitmatch bits with
+	  | { sequence_number : 4*8 : littleendian;
+	      rest : -1 : bitstring
+	    } ->
+	    let input = {
+	      previous_transaction_output = { referenced_transaction_hash = outpoint_hash;
+					      transaction_output_index = Int32.to_int outpoint_index;
+					    };
+	      signature_script = signature_script;
+	      transaction_sequence_number = Int32.to_int sequence_number;
+	    } in 
+	    parse_inputs count (Int64.add index 1L) (input :: acc) rest
+	  | { _ } -> (acc, bits)
+	)
+      | { _ } -> (acc, bits)
+  in
+  let rec parse_outputs count index acc bits =
+    if index >= count then (acc, bits) else
+      bitmatch bits with
+      | { value : 8*8 : littleendian;
+	  rest : -1 : bitstring
+	} -> 
+	match parse_varstring rest with
+	| None, bits -> (acc, bits)
+	| Some output_script, rest ->
+	  let output = {
+	    transaction_output_value = value;
+	    output_script = output_script;
+	  } in
+	  parse_outputs count (Int64.add index 1L) (output :: acc) rest
+  in
+  let data_format_version, bits = bitmatch bits with
+    | { version : 4*8 : littleendian;
+	rest : -1 : bitstring
+      } -> (Some version, rest)
+    | { _ } -> (None, bits)
+  in
+  match data_format_version with
+  | None -> None
+  | Some data_format_version ->
+    match parse_varint bits with
+    | None, rest -> None
+    | Some input_count, bits ->
+      let inputs, bits = parse_inputs input_count 0L [] bits in
+      match parse_varint bits with
+      | None, rest -> None
+      | Some output_count, bits ->
+	let outputs, bits = parse_outputs output_count 0L [] bits in
+	bitmatch bits with
+	| { lock_time : 4*8 : littleendian } ->
+	  Some {
+	    transaction_data_format_version = Int32.to_int data_format_version;
+	    transaction_inputs = inputs;
+	    transaction_outputs = outputs;
+	    transaction_lock_time = transaction_lock_time_of_int32 lock_time;
+	  }
+	| { _ } -> None
+;;
+let parse_tx_message bits =
+  match parse_transaction bits with
+  | None -> None
+  | Some transaction -> Some (TxPayload transaction)
+;;
+
 let parse_payload protocol_version payload_bitstring = function
   | VersionCommand -> parse_version_message payload_bitstring
   | VerAckCommand -> parse_verack_message payload_bitstring
@@ -271,6 +346,7 @@ let parse_payload protocol_version payload_bitstring = function
   | NotFoundCommand -> parse_notfound_message payload_bitstring
   | GetBlocksCommand -> parse_getblocks_message payload_bitstring
   | GetHeadersCommand -> parse_getheaders_message payload_bitstring
+  | TxCommand -> parse_tx_message payload_bitstring
   | _ -> Some (UnknownPayload payload_bitstring)
 ;;
 

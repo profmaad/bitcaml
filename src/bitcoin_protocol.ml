@@ -1,4 +1,6 @@
 (* Magic value describing the network to use *)
+let satoshis_per_bitoin = 100000000.0;;
+
 type magic = 
 | UnknownMagic of int32
 | MainNetwork
@@ -74,7 +76,7 @@ type timestamped_network_address =
   {
     address_timestamp : Unix.tm option;
     network_address : network_address;
-  }
+  };;
 
 type addr_message =
   {
@@ -103,7 +105,36 @@ type block_locator_list_message =
     block_protocol_version : int;
     block_locator_hashes : string list;
     block_locator_hash_stop : string;
-  }
+  };;
+
+type transaction_lock_time =
+| AlwaysLockedTransaction
+| BlockLockedTransaction of int32
+| TimestampLockedTransaction of Unix.tm
+;;
+type transaction_outpoint =
+  {
+    referenced_transaction_hash : string;
+    transaction_output_index : int;
+  };;
+type transaction_input =
+  {
+    previous_transaction_output : transaction_outpoint;
+    signature_script : string;
+    transaction_sequence_number : int;
+  };;
+type transaction_output =
+  {
+    transaction_output_value : int64;
+    output_script : string;
+  };;
+type transaction =
+  {
+    transaction_data_format_version : int;
+    transaction_inputs : transaction_input list;
+    transaction_outputs : transaction_output list;
+    transaction_lock_time : transaction_lock_time;
+  };;
 
 type message_payload = 
 | VersionPayload of version_message
@@ -115,6 +146,7 @@ type message_payload =
 | NotFoundPayload of inventory_list_message
 | GetBlocksPayload of block_locator_list_message
 | GetHeadersPayload of block_locator_list_message
+| TxPayload of transaction
 | UnknownPayload of Bitstring.t
 ;;
 
@@ -200,7 +232,9 @@ let command_of_message_payload = function
   | NotFoundPayload p -> NotFoundCommand
   | GetBlocksPayload p -> GetBlocksCommand
   | GetHeadersPayload p -> GetHeadersCommand
+  | TxPayload p -> TxCommand
   | UnknownPayload p -> UnknownCommand "UNKNOWN"
+;;
 
 let services_set_of_int64 i = 
   let services_list = ref [] in
@@ -218,7 +252,20 @@ let inventory_item_type_of_int32 = function
   | 0x1l -> TransactionInventoryItem
   | 0x2l -> BlockInventoryItem
   | i -> UnknownInventoryItem (Int32.to_int i)
+;;
 let int32_of_inventory_item_type = function
   | TransactionInventoryItem -> 0x1l
   | BlockInventoryItem -> 0x2l
   | UnknownInventoryItem i -> (Int32.of_int i)
+;;
+
+let transaction_lock_time_of_int32 = function
+  | 0x0l -> AlwaysLockedTransaction
+  | i when (i < 500000000l) -> BlockLockedTransaction i
+  | i -> TimestampLockedTransaction (Utils.unix_tm_of_int32 i)
+;;
+let int32_of_transaction_lock_time = function
+  | AlwaysLockedTransaction -> 0x0l
+  | BlockLockedTransaction i -> i
+  | TimestampLockedTransaction timestamp -> Utils.int32_of_unix_tm timestamp
+;;

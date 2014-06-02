@@ -62,23 +62,18 @@ let bitstring_of_version_message m =
 
 let bitstring_of_verack_message () = empty_bitstring;;
 
+(* using a 0 timestamp as default is a bit of a hack, really, bit it should achieve the same result: this address will not be used by the receiving node *)      
+let bitstring_of_timestamped_network_address address =
+  BITSTRING {
+    Utils.int64_of_unix_tm (Option.default (Unix.gmtime 0.0) address.address_timestamp) : 8*8 : littleendian;
+    bitstring_of_network_address address.network_address : -1 : bitstring
+  }
+;;
 let bitstring_of_addr_message m =
-  let rec bitstrings_of_addresses = function
-    | [] -> []
-    | { address_timestamp = timestamp; 
-	network_address = network_address;
-      } :: addresses -> 
-      (* using a 0 timestamp as default is a bit of a hack, really, bit it should achieve the same result: this address will not be used by the receiving node *)      
-      let address_bitstring = BITSTRING {
-	Utils.int64_of_unix_tm (Option.default (Unix.gmtime 0.0) timestamp) : 8*8 : littleendian;
-	bitstring_of_network_address network_address : -1 : bitstring
-      } in
-      address_bitstring :: bitstrings_of_addresses addresses
-  in
   let address_count_varint_bitstring = varint_bitstring_of_int64 (Int64.of_int (List.length m.addresses)) in
   BITSTRING {
     address_count_varint_bitstring : -1 : bitstring;
-    concat (bitstrings_of_addresses m.addresses) : -1 : bitstring
+    concat (List.map bitstring_of_timestamped_network_address m.addresses) : -1 : bitstring
   }
 ;;
 
@@ -91,16 +86,10 @@ let bitstring_of_inventory_item item =
   }
 ;;
 let bitstring_of_inventory_list_message m =
-  let rec bitstrings_of_inventory_items = function
-    | [] -> []
-    | item :: items -> 
-      let item_bitstring = bitstring_of_inventory_item item in
-      item_bitstring :: bitstrings_of_inventory_items items
-  in
   let item_count_varint_bitstring = varint_bitstring_of_int64 (Int64.of_int (List.length m.inventory)) in
   BITSTRING {
     item_count_varint_bitstring : -1 : bitstring;
-    concat (bitstrings_of_inventory_items m.inventory) : -1 : bitstring
+    concat (List.map bitstring_of_inventory_item m.inventory) : -1 : bitstring
   }
 ;;
 let bitstring_of_inv_message m = bitstring_of_inventory_list_message m;;
@@ -108,21 +97,45 @@ let bitstring_of_getdata_message m = bitstring_of_inventory_list_message m;;
 let bitstring_of_notfound_message m = bitstring_of_inventory_list_message m;;
 
 let bitstring_of_block_locator_list_message m =
-  let rec bitstrings_of_block_locators = function
-    | [] -> []
-    | hash :: hashes ->
-      (BITSTRING { hash : 32*8 : string }) :: bitstrings_of_block_locators hashes
-  in
+  let bitstring_of_hash hash = BITSTRING { hash : 32*8 : string } in
   let block_locator_count_varint_bitstring = varint_bitstring_of_int64 (Int64.of_int (List.length m.block_locator_hashes)) in
   BITSTRING {
     Int32.of_int m.block_protocol_version : 4*8 : littleendian;
     block_locator_count_varint_bitstring : -1 : bitstring;
-    concat (bitstrings_of_block_locators m.block_locator_hashes) : -1 : bitstring;
+    concat (List.map bitstring_of_hash m.block_locator_hashes) : -1 : bitstring;
     m.block_locator_hash_stop : 32*8 : string
   }
 ;;
 let bitstring_of_getblocks_message m = bitstring_of_block_locator_list_message m;;
 let bitstring_of_getheaders_message m = bitstring_of_block_locator_list_message m;;
+
+let bitstring_of_transaction_input input = 
+  BITSTRING {
+    input.previous_transaction_output.referenced_transaction_hash : 32*8 : string;
+    Int32.of_int input.previous_transaction_output.transaction_output_index : 4*8 : littleendian;
+    varstring_bitstring_of_string input.signature_script : -1 : bitstring;
+    Int32.of_int input.transaction_sequence_number : 4*8 : littleendian
+  }
+;;
+let bitstring_of_transaction_output output = 
+  BITSTRING {
+    output.transaction_output_value : 8*8 : littleendian;
+    varstring_bitstring_of_string output.output_script : -1 : bitstring
+  }
+;; 
+let bitstring_of_transaction t =
+  let input_count_varint_bitstring = varint_bitstring_of_int64 (Int64.of_int (List.length t.transaction_inputs)) in
+  let output_count_varint_bitstring = varint_bitstring_of_int64 (Int64.of_int (List.length t.transaction_outputs)) in
+  BITSTRING {
+    Int32.of_int t.transaction_data_format_version : 4*8 :littleendian;
+    input_count_varint_bitstring : -1 : bitstring;
+    concat (List.map bitstring_of_transaction_input t.transaction_inputs) : -1 : bitstring;
+    output_count_varint_bitstring : -1 : bitstring;
+    concat (List.map bitstring_of_transaction_output t.transaction_outputs) : -1 : bitstring;
+    int32_of_transaction_lock_time t.transaction_lock_time : 4*8 : littleendian
+  }
+;;
+let bitstring_of_transaction_message m = bitstring_of_transaction m;;
 
 let bitstring_of_payload = function
   | VersionPayload m -> bitstring_of_version_message m
@@ -134,6 +147,7 @@ let bitstring_of_payload = function
   | NotFoundPayload m -> bitstring_of_notfound_message m
   | GetBlocksPayload m -> bitstring_of_getblocks_message m
   | GetHeadersPayload m -> bitstring_of_getheaders_message m
+  | TxPayload m -> bitstring_of_transaction_message m
   | UnknownPayload bs -> bs
 ;;
 
