@@ -81,8 +81,8 @@ let print_addr_message m =
   let rec print_addresses index = function
     | [] -> ()
     | address :: addresses ->
-      Printf.printf "%d:\t%s\n" index (pp_string_of_network_address address.network_address);
-      Option.may (fun timestamp -> Printf.printf "\t(Last seen: %s)\n" (Utils.string_of_unix_tm timestamp)) address.address_timestamp;
+      Printf.printf "\t%d:\t%s\n" index (pp_string_of_network_address address.network_address);
+      Option.may (fun timestamp -> Printf.printf "\t\t(Last seen: %s)\n" (Utils.string_of_unix_tm timestamp)) address.address_timestamp;
       print_addresses (index+1) addresses
   in
   Printf.printf "Bitcoin Address Message (%d addresses):\n" (List.length m.addresses);
@@ -100,22 +100,40 @@ let pp_string_of_inventory_item_type = function
 ;;
 
 let pp_string_of_inventory_item item =
-  Printf.sprintf "%s: %s" (pp_string_of_inventory_item_type item.inventory_item_type) item.inventory_item_hash
+  Printf.sprintf "%s: %s" (pp_string_of_inventory_item_type item.inventory_item_type) (Utils.hex_string_of_hash_string item.inventory_item_hash)
 ;;
 
 let print_inventory_list_message m =
   let rec print_inventory_list index = function
     | [] -> ()
     | item :: items ->
-      Printf.printf "%d:\t%s\n" index (pp_string_of_inventory_item item);
+      Printf.printf "\t%d:\t%s\n" index (pp_string_of_inventory_item item);
       print_inventory_list (index+1) items
   in
   print_inventory_list 1 m.inventory
 ;;
+
 let print_inventory_list_message_with_header m message_type =
   Printf.printf "Bitcoin %s Message:\n" message_type;
   print_inventory_list_message m
 ;;
+
+let print_block_locator_list_message m =
+  let rec print_block_locator index = function
+    | [] -> ()
+    | hash :: hashes ->
+      Printf.printf "\t%d:\t%s\n" index (Utils.hex_string_of_hash_string hash);
+      print_block_locator (index+1) hashes
+  in
+  Printf.printf "\tBlock protocol version: %d\n" m.block_protocol_version;
+  Printf.printf "\tBlock Locator (%d entries):\n" (List.length m.block_locator_hashes);
+  print_block_locator 1 m.block_locator_hashes;
+  Printf.printf "\tLast desired Block: %s\n" (if m.block_locator_hash_stop = (String.make 32 '\x00') then "None" else Utils.hex_string_of_hash_string m.block_locator_hash_stop)
+;;
+let print_block_locator_list_message_with_header m message_type =
+  Printf.printf "Bitcoin %s Message:\n" message_type;
+  print_block_locator_list_message m
+;;  
 
 let print_message_payload = function
   | VersionPayload p -> print_version_message p
@@ -125,6 +143,8 @@ let print_message_payload = function
   | InvPayload p -> print_inventory_list_message_with_header p "Inventory"
   | GetDataPayload p -> print_inventory_list_message_with_header p "Get Data"
   | NotFoundPayload p -> print_inventory_list_message_with_header p "Not Found"
+  | GetBlocksPayload p -> print_block_locator_list_message_with_header p "Get Blocks"
+  | GetHeadersPayload p -> print_block_locator_list_message_with_header p "Get Headers"
   | UnknownPayload s -> Printf.printf "Unknown Message Payload (%d bytes)\n" (Bitstring.bitstring_length s)
 ;;
 

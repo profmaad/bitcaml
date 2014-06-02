@@ -218,6 +218,49 @@ let parse_notfound_message bits =
   | Some inventory -> Some (NotFoundPayload inventory)
 ;;
 
+let parse_block_locator_list_message bits =
+  let rec parse_block_locator_list count index bits =
+    if index >= count then [] else
+      bitmatch bits with
+      | { block_locator_hash : 32*8 : string;
+	  rest : -1 : bitstring
+	} ->
+	block_locator_hash :: parse_block_locator_list count (Int64.add index 1L) rest
+      | { _ } -> []
+  in
+  let protocol_version, bits = bitmatch bits with
+    | { version : 4*8 : littleendian;
+	rest : -1 : bitstring
+      } -> (Some version, rest)
+    | { _ } -> (None, bits)
+  in
+  match protocol_version with
+  | None -> None
+  | Some protocol_version ->
+    match parse_varint bits with
+    | None, rest -> None
+    | Some block_locator_count, bits ->
+      let block_locator_list = parse_block_locator_list block_locator_count 0L bits in
+      bitmatch bits with
+      | { block_locator_hash_stop : 32*8 : string } ->
+	Some {
+	  block_protocol_version = Int32.to_int protocol_version;
+	  block_locator_hashes = block_locator_list;
+	  block_locator_hash_stop = block_locator_hash_stop;
+	}
+      | { _ } -> None
+;;
+let parse_getblocks_message bits =
+  match parse_block_locator_list_message bits with
+  | None -> None
+  | Some block_locator_list_message -> Some (GetBlocksPayload block_locator_list_message)
+;;
+let parse_getheaders_message bits =
+  match parse_block_locator_list_message bits with
+  | None -> None
+  | Some block_locator_list_message -> Some (GetHeadersPayload block_locator_list_message)
+;;
+
 let parse_payload protocol_version payload_bitstring = function
   | VersionCommand -> parse_version_message payload_bitstring
   | VerAckCommand -> parse_verack_message payload_bitstring
@@ -226,6 +269,8 @@ let parse_payload protocol_version payload_bitstring = function
   | InvCommand -> parse_inv_message payload_bitstring
   | GetDataCommand -> parse_getdata_message payload_bitstring
   | NotFoundCommand -> parse_notfound_message payload_bitstring
+  | GetBlocksCommand -> parse_getblocks_message payload_bitstring
+  | GetHeadersCommand -> parse_getheaders_message payload_bitstring
   | _ -> Some (UnknownPayload payload_bitstring)
 ;;
 

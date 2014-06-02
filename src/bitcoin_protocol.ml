@@ -98,6 +98,13 @@ type inventory_list_message =
     inventory : inventory_item list;
   };;
 
+type block_locator_list_message =
+  {
+    block_protocol_version : int;
+    block_locator_hashes : string list;
+    block_locator_hash_stop : string;
+  }
+
 type message_payload = 
 | VersionPayload of version_message
 | VerAckPayload
@@ -106,6 +113,8 @@ type message_payload =
 | InvPayload of inventory_list_message
 | GetDataPayload of inventory_list_message
 | NotFoundPayload of inventory_list_message
+| GetBlocksPayload of block_locator_list_message
+| GetHeadersPayload of block_locator_list_message
 | UnknownPayload of Bitstring.t
 ;;
 
@@ -189,6 +198,8 @@ let command_of_message_payload = function
   | InvPayload p -> InvCommand
   | GetDataPayload p -> GetDataCommand
   | NotFoundPayload p -> NotFoundCommand
+  | GetBlocksPayload p -> GetBlocksCommand
+  | GetHeadersPayload p -> GetHeadersCommand
   | UnknownPayload p -> UnknownCommand "UNKNOWN"
 
 let services_set_of_int64 i = 
