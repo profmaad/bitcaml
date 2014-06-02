@@ -17,7 +17,7 @@ let test_version_message () =
     random_nonce = Some random_nonce;
     user_agent = Some Config.user_agent;
     start_height = Some 0;
-    relay = Some false;
+    relay = Some true;
   } in
   {
     Bitcoin.Protocol.network = Bitcoin.Protocol.TestNet3;
@@ -48,8 +48,16 @@ let receive_message protocol_version socket =
     Printf.printf "Received %s message\n" (Bitcoin.Protocol.PP.pp_string_of_command (Bitcoin.Protocol.command_of_message_payload m.Bitcoin.Protocol.payload))
   in
   let received_message = Bitcoin.Protocol.Parser.read_and_parse_message_from_fd protocol_version socket in
-  Option.may print_received_message_type received_message;
-  received_message
+  match received_message with
+  | None -> None
+  | Some ({ Bitcoin.Protocol.network = Bitcoin.Protocol.TestNet3;
+	   payload = Bitcoin.Protocol.TxPayload p;
+	  } as tx_message) ->
+    Bitcoin.Protocol.PP.print_message tx_message;
+    received_message
+  | received_message ->
+    Option.may print_received_message_type received_message;
+    received_message
 ;;
 let rec receive_message_with_command command protocol_version socket =
   match receive_message protocol_version socket with
@@ -178,6 +186,25 @@ let rec download_block_chain protocol_version known_block_hashes socket =
     Bitcoin.Protocol.PP.print_message m
 ;;
 
+let rec snoop_transactions protocol_version socket =
+  let inventory_item_is_transaction item = item.Bitcoin.Protocol.inventory_item_type = Bitcoin.Protocol.TransactionInventoryItem in
+  match receive_message_with_command Bitcoin.Protocol.InvCommand protocol_version socket with
+  | None -> ()
+  | Some ({ Bitcoin.Protocol.network = Bitcoin.Protocol.TestNet3;
+	    payload = Bitcoin.Protocol.InvPayload inv_payload
+	  } as inv_message) ->
+    Bitcoin.Protocol.PP.print_message inv_message;
+    ( match List.filter inventory_item_is_transaction inv_payload.Bitcoin.Protocol.inventory with
+    | [] -> snoop_transactions protocol_version socket
+    | transaction_inventory ->
+      send_message socket { Bitcoin.Protocol.network = Bitcoin.Protocol.TestNet3;
+			    payload = Bitcoin.Protocol.GetDataPayload { Bitcoin.Protocol.inventory = transaction_inventory; };
+			  };
+      snoop_transactions protocol_version socket
+    )
+  | _ -> ()
+;;
+
 (* main *)
 let () =
   Random.self_init ();
@@ -187,7 +214,8 @@ let () =
   let peer_protocol_version = handle_connection client_socket in
   Printf.printf "Peer is running protocol version %d\n" peer_protocol_version;
   (* exchange_addresses peer_protocol_version client_socket; *)
-  download_block_chain peer_protocol_version [Config.testnet3_genesis_block_hash] client_socket;
+  (* download_block_chain peer_protocol_version [Config.testnet3_genesis_block_hash] client_socket; *)
+  snoop_transactions peer_protocol_version client_socket;
   Unix.sleep 1;
   Unix.close client_socket
 ;;
