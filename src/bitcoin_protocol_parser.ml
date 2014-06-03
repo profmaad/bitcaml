@@ -241,14 +241,16 @@ let parse_block_locator_list_message bits =
     | None, rest -> None
     | Some block_locator_count, bits ->
       let block_locator_list, bits = parse_block_locator_list block_locator_count 0L [] bits in
-      bitmatch bits with
-      | { block_locator_hash_stop : 32*8 : string } ->
-	Some {
-	  block_protocol_version = Int32.to_int protocol_version;
-	  block_locator_hashes = block_locator_list;
-	  block_locator_hash_stop = block_locator_hash_stop;
-	}
-      | { _ } -> None
+      if ((List.length block_locator_list) != (Int64.to_int block_locator_count)) then None
+      else
+	bitmatch bits with
+	| { block_locator_hash_stop : 32*8 : string } ->
+	  Some {
+	    block_protocol_version = Int32.to_int protocol_version;
+	    block_locator_hashes = List.rev block_locator_list;
+	    block_locator_hash_stop = block_locator_hash_stop;
+	  }
+	| { _ } -> None
 ;;
 let parse_getblocks_message bits =
   match parse_block_locator_list_message bits with
@@ -320,15 +322,21 @@ let parse_transaction bits =
       | None, rest -> None
       | Some output_count, bits ->
 	let outputs, bits = parse_outputs output_count 0L [] bits in
-	bitmatch bits with
-	| { lock_time : 4*8 : littleendian } ->
-	  Some {
-	    transaction_data_format_version = Int32.to_int data_format_version;
-	    transaction_inputs = inputs;
-	    transaction_outputs = outputs;
-	    transaction_lock_time = transaction_lock_time_of_int32 lock_time;
-	  }
-	| { _ } -> None
+	if
+	  ((List.length inputs) != (Int64.to_int input_count)) ||
+	  ((List.length outputs) != (Int64.to_int output_count))
+	then (None, bits)
+	else
+	  bitmatch bits with
+	  | { lock_time : 4*8 : littleendian;
+	      rest : -1 : bitstring } ->
+	    (Some {
+	      transaction_data_format_version = Int32.to_int data_format_version;
+	      transaction_inputs = List.rev inputs;
+	      transaction_outputs = List.rev outputs;
+	      transaction_lock_time = transaction_lock_time_of_int32 lock_time;
+	    }, rest)
+	  | { _ } -> (None, bits)
 ;;
 let parse_tx_message bits =
   match parse_transaction bits with
