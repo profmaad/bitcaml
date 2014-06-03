@@ -121,7 +121,7 @@ type transaction_input =
   {
     previous_transaction_output : transaction_outpoint;
     signature_script : string;
-    transaction_sequence_number : int;
+    transaction_sequence_number : int32;
   };;
 type transaction_output =
   {

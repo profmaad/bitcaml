@@ -281,7 +281,7 @@ let parse_transaction bits =
 					      transaction_output_index = Int32.to_int outpoint_index;
 					    };
 	      signature_script = signature_script;
-	      transaction_sequence_number = Int32.to_int sequence_number;
+	      transaction_sequence_number = sequence_number;
 	    } in 
 	    parse_inputs count (Int64.add index 1L) (input :: acc) rest
 	  | { _ } -> (acc, bits)

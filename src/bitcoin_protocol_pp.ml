@@ -154,7 +154,7 @@ let print_transaction transaction =
     | [] -> ()
     | input :: inputs ->
       Printf.printf "\t%d:\tReferenced output: %s\n" index (pp_string_of_transaction_outpoint input.previous_transaction_output);
-      Printf.printf "\t\tSequence Number: %d\n" input.transaction_sequence_number;
+      Printf.printf "\t\tSequence Number: %s\n" (if input.transaction_sequence_number = 0xffffffffl then "Final" else Printf.sprintf "0x%lx" input.transaction_sequence_number);
       Printf.printf "\t\tSignature script:\n"; Utils.print_indented_hex_string input.signature_script 0 2;
       print_newline ();
       print_transaction_inputs (index + 1) inputs

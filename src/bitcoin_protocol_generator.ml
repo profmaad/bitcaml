@@ -114,7 +114,7 @@ let bitstring_of_transaction_input input =
     input.previous_transaction_output.referenced_transaction_hash : 32*8 : string;
     Int32.of_int input.previous_transaction_output.transaction_output_index : 4*8 : littleendian;
     varstring_bitstring_of_string input.signature_script : -1 : bitstring;
-    Int32.of_int input.transaction_sequence_number : 4*8 : littleendian
+    input.transaction_sequence_number : 4*8 : littleendian
   }
 ;;
 let bitstring_of_transaction_output output = 
