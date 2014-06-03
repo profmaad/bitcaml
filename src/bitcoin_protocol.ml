@@ -161,6 +161,11 @@ type headers_message =
     block_headers : protocol_block_header list;
   };;
 
+type nonce_message = 
+  {
+    message_nonce : int64;
+  };;
+
 type message_payload = 
 | VersionPayload of version_message
 | VerAckPayload
@@ -174,6 +179,9 @@ type message_payload =
 | TxPayload of transaction
 | BlockPayload of block
 | HeadersPayload of headers_message
+| MemPoolPayload
+| PingPayload of nonce_message
+| PongPayload of nonce_message
 | UnknownPayload of Bitstring.t
 ;;
 
@@ -262,6 +270,9 @@ let command_of_message_payload = function
   | TxPayload p -> TxCommand
   | BlockPayload p -> BlockCommand
   | HeadersPayload p -> HeadersCommand
+  | MemPoolPayload -> MemPoolCommand
+  | PingPayload p -> PingCommand
+  | PongPayload p -> PongCommand
   | UnknownPayload p -> UnknownCommand "UNKNOWN"
 ;;
 

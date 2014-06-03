@@ -216,6 +216,18 @@ let print_headers_message m =
   List.iteri print_protocol_block_header_with_index m.block_headers
 ;;
 
+let print_mempool_message () =
+  print_endline "Bitcoin Memory Pool Message"
+;;
+
+let print_nonce_message m =
+  Printf.printf "\tRandom Nonce: 0x%08Lx\n" m.message_nonce;
+;;
+let print_nonce_message_with_header m message_type =
+  Printf.printf "Bitcoin %s Message:\n" message_type;
+  print_nonce_message m
+;;
+
 let print_message_payload = function
   | VersionPayload p -> print_version_message p
   | VerAckPayload -> print_verack_message ()
@@ -229,6 +241,9 @@ let print_message_payload = function
   | TxPayload p -> print_tx_message p
   | BlockPayload p -> print_block_message p
   | HeadersPayload p -> print_headers_message p
+  | MemPoolPayload -> print_mempool_message ()
+  | PingPayload p -> print_nonce_message_with_header p "Ping"
+  | PongPayload p -> print_nonce_message_with_header p "Pong"
   | UnknownPayload s -> Printf.printf "Unknown Message Payload (%d bytes)\n" (Bitstring.bitstring_length s)
 ;;
 

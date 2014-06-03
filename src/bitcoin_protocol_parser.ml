@@ -421,6 +421,27 @@ let parse_headers_message bits =
       })
 ;;
 
+let parse_mempool_message payload_bitstring = Some MemPoolPayload;;
+
+let parse_nonce_message bits =
+  bitmatch bits with
+  | { nonce : 8*8 : littleendian } ->
+    Some {
+      message_nonce = nonce;
+    }
+  | { _ } -> None
+;;
+let parse_ping_message bits =
+  match parse_nonce_message bits with
+  | None -> None
+  | Some nonce_message -> Some (PingPayload nonce_message)
+;;
+let parse_pong_message bits =
+  match parse_nonce_message bits with
+  | None -> None
+  | Some nonce_message -> Some (PongPayload nonce_message)
+;;
+
 let parse_payload protocol_version payload_bitstring = function
   | VersionCommand -> parse_version_message payload_bitstring
   | VerAckCommand -> parse_verack_message payload_bitstring
@@ -434,6 +455,9 @@ let parse_payload protocol_version payload_bitstring = function
   | TxCommand -> parse_tx_message payload_bitstring
   | BlockCommand -> parse_block_message payload_bitstring
   | HeadersCommand -> parse_headers_message payload_bitstring
+  | MemPoolCommand -> parse_mempool_message payload_bitstring
+  | PingCommand -> parse_ping_message payload_bitstring
+  | PongCommand -> parse_pong_message payload_bitstring
   | _ -> Some (UnknownPayload payload_bitstring)
 ;;
 

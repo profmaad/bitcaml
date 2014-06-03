@@ -223,6 +223,30 @@ let get_block protocol_version socket block_hash =
   | Some m ->
     Bitcoin.Protocol.PP.print_message m
 ;;
+
+let play_pingpong protocol_version socket =
+  let ping_nonce = Random.int64 Int64.max_int in
+  let ping = {
+    Bitcoin.Protocol.network = Bitcoin.Protocol.TestNet3;
+    payload = Bitcoin.Protocol.PingPayload {
+      Bitcoin.Protocol.message_nonce = ping_nonce;
+    }
+  } in
+  send_message socket ping;
+  match receive_message_with_command Bitcoin.Protocol.PongCommand protocol_version socket with
+  | None -> print_endline "No valid pong received."
+  | Some ({
+    Bitcoin.Protocol.network = Bitcoin.Protocol.TestNet3;
+    payload = Bitcoin.Protocol.PongPayload {
+      Bitcoin.Protocol.message_nonce = pong_nonce;
+    }} as pong) ->
+    Bitcoin.Protocol.PP.print_message pong;
+    if pong_nonce = ping_nonce then
+      print_endline "Ping Pong all day long!"
+    else
+      print_endline "I pinged, but the pong wasn't what I expected!"
+  | Some x -> print_endline "No valid pong received."
+;;
     
 (* main *)
 let () =
@@ -239,6 +263,7 @@ let () =
   get_block peer_protocol_version client_socket Config.testnet3_genesis_block_hash;
   print_endline "Retrieving a TestNet3 test block...";
   get_block peer_protocol_version client_socket Config.testnet3_test_block;
+  play_pingpong peer_protocol_version client_socket;
   Unix.sleep 1;
   Unix.close client_socket
 ;;

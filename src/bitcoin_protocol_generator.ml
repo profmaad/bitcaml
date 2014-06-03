@@ -171,6 +171,16 @@ let bitstring_of_headers_message m =
   }
 ;;
 
+let bitstring_of_mempool_message () = empty_bitstring;;
+
+let bitstring_of_nonce_message m =
+  BITSTRING {
+    m.message_nonce : 8*8 : littleendian
+  }
+;;
+let bitstring_of_ping_message m = bitstring_of_nonce_message m;;
+let bitstring_of_pong_message m = bitstring_of_nonce_message m;;
+
 let bitstring_of_payload = function
   | VersionPayload m -> bitstring_of_version_message m
   | VerAckPayload -> bitstring_of_verack_message ()
@@ -184,6 +194,9 @@ let bitstring_of_payload = function
   | TxPayload m -> bitstring_of_transaction_message m
   | BlockPayload m -> bitstring_of_block_message m
   | HeadersPayload m -> bitstring_of_headers_message m
+  | MemPoolPayload -> bitstring_of_mempool_message ()
+  | PingPayload m -> bitstring_of_ping_message m
+  | PongPayload m -> bitstring_of_pong_message m
   | UnknownPayload bs -> bs
 ;;
 
