@@ -205,6 +205,25 @@ let rec snoop_transactions protocol_version socket =
   | _ -> ()
 ;;
 
+let get_block protocol_version socket block_hash =
+  let message = {
+    Bitcoin.Protocol.network = Bitcoin.Protocol.TestNet3;
+    payload = Bitcoin.Protocol.GetDataPayload {
+      Bitcoin.Protocol.inventory = [
+	{
+	  Bitcoin.Protocol.inventory_item_type = Bitcoin.Protocol.BlockInventoryItem;
+	  inventory_item_hash = block_hash;
+	}
+      ];
+    };
+  } in
+  send_message socket message;
+  match receive_message_with_command Bitcoin.Protocol.BlockCommand protocol_version socket with
+  | None -> print_endline "No valid block received."
+  | Some m ->
+    Bitcoin.Protocol.PP.print_message m
+;;
+    
 (* main *)
 let () =
   Random.self_init ();
@@ -215,7 +234,11 @@ let () =
   Printf.printf "Peer is running protocol version %d\n" peer_protocol_version;
   (* exchange_addresses peer_protocol_version client_socket; *)
   (* download_block_chain peer_protocol_version [Config.testnet3_genesis_block_hash] client_socket; *)
-  snoop_transactions peer_protocol_version client_socket;
+  (* snoop_transactions peer_protocol_version client_socket; *)
+  print_endline "Retrieving TestNet3 genesis block...";
+  get_block peer_protocol_version client_socket Config.testnet3_genesis_block_hash;
+  print_endline "Retrieving a TestNet3 test block...";
+  get_block peer_protocol_version client_socket Config.testnet3_test_block;
   Unix.sleep 1;
   Unix.close client_socket
 ;;
