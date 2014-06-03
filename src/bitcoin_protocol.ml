@@ -136,6 +136,31 @@ type transaction =
     transaction_lock_time : transaction_lock_time;
   };;
 
+type block_header =
+  {
+    block_version : int;
+    previous_block_hash : string;
+    merkle_root : string;
+    block_timestamp : Unix.tm;
+    block_difficulty_target : int;
+    block_nonce : int32;
+  };;
+type protocol_block_header =
+  {
+    basic_block_header : block_header;
+    block_transaction_count : int64;
+  };;
+type block =
+  {
+    block_header : block_header;
+    block_transactions : transaction list;
+  };;
+
+type headers_message =
+  {
+    block_headers : protocol_block_header list;
+  };;
+
 type message_payload = 
 | VersionPayload of version_message
 | VerAckPayload
@@ -147,6 +172,8 @@ type message_payload =
 | GetBlocksPayload of block_locator_list_message
 | GetHeadersPayload of block_locator_list_message
 | TxPayload of transaction
+| BlockPayload of block
+| HeadersPayload of headers_message
 | UnknownPayload of Bitstring.t
 ;;
 
@@ -233,6 +260,8 @@ let command_of_message_payload = function
   | GetBlocksPayload p -> GetBlocksCommand
   | GetHeadersPayload p -> GetHeadersCommand
   | TxPayload p -> TxCommand
+  | BlockPayload p -> BlockCommand
+  | HeadersPayload p -> HeadersCommand
   | UnknownPayload p -> UnknownCommand "UNKNOWN"
 ;;
 

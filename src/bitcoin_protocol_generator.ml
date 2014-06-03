@@ -137,6 +137,40 @@ let bitstring_of_transaction t =
 ;;
 let bitstring_of_transaction_message m = bitstring_of_transaction m;;
 
+let bitstring_of_block_header header =
+  BITSTRING {
+    Int32.of_int header.block_version : 4*8 : littleendian;
+    header.previous_block_hash : 32*8 : string;
+    header.merkle_root : 32*8 : string;
+    Utils.int32_of_unix_tm header.block_timestamp : 4*8 : littleendian;
+    Int32.of_int header.block_difficulty_target : 4*8 : littleendian;
+    header.block_nonce : 4*8 : littleendian
+  }
+;;
+let bitstring_of_protocol_block_header header =
+  BITSTRING {
+    bitstring_of_block_header header.basic_block_header : -1 : bitstring;
+    varint_bitstring_of_int64 header.block_transaction_count : -1 : bitstring
+  }
+;;
+let bitstring_of_block block =
+  let transaction_count_varint_bitstring = varint_bitstring_of_int64 (Int64.of_int (List.length block.block_transactions)) in
+  BITSTRING {
+    bitstring_of_block_header block.block_header : -1 : bitstring;
+    transaction_count_varint_bitstring : -1 : bitstring;
+    concat (List.map bitstring_of_transaction block.block_transactions) : -1 : bitstring
+  }
+;;
+let bitstring_of_block_message m = bitstring_of_block m;;
+
+let bitstring_of_headers_message m =
+  let headers_count_varint_bitstring = varint_bitstring_of_int64 (Int64.of_int (List.length m.block_headers)) in
+  BITSTRING {
+    headers_count_varint_bitstring : -1 : bitstring;
+    concat (List.map bitstring_of_protocol_block_header m.block_headers) : -1 : bitstring
+  }
+;;
+
 let bitstring_of_payload = function
   | VersionPayload m -> bitstring_of_version_message m
   | VerAckPayload -> bitstring_of_verack_message ()
@@ -148,6 +182,8 @@ let bitstring_of_payload = function
   | GetBlocksPayload m -> bitstring_of_getblocks_message m
   | GetHeadersPayload m -> bitstring_of_getheaders_message m
   | TxPayload m -> bitstring_of_transaction_message m
+  | BlockPayload m -> bitstring_of_block_message m
+  | HeadersPayload m -> bitstring_of_headers_message m
   | UnknownPayload bs -> bs
 ;;
 

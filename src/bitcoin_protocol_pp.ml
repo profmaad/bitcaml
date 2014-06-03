@@ -179,6 +179,43 @@ let print_tx_message m =
   print_transaction m
 ;;
 
+let print_block_header header =
+  Printf.printf "\tBlock Version: %u\n" header.block_version;
+  Printf.printf "\tPrevious Block: %s\n" (Utils.hex_string_of_hash_string header.previous_block_hash);
+  Printf.printf "\tMerkle Tree Root: %s\n" (Utils.hex_string_of_hash_string header.merkle_root);
+  Printf.printf "\tCreated at: %s\n" (Utils.string_of_unix_tm header.block_timestamp);
+  Printf.printf "\tDifficulty: %u\n" header.block_difficulty_target;
+  Printf.printf "\tNonce: %lu\n" header.block_nonce;
+;;
+let print_protocol_block_header header =
+  print_block_header header.basic_block_header;
+  Printf.printf "\tTransactions: %Ld transactions\n" header.block_transaction_count;
+;;
+
+let print_block block =
+  let print_transaction_with_index index transaction =
+    Printf.printf "%d:\n" (index + 1);
+    print_transaction transaction;
+  in
+  print_block_header block.block_header;
+  Printf.printf "\tTransactions (%d entries):\n" (List.length block.block_transactions);
+  List.iteri print_transaction_with_index block.block_transactions
+;;
+let print_block_message m =
+  print_endline "Bitcoin Block Message:";
+  print_block m
+;;
+
+let print_headers_message m =
+  let print_protocol_block_header_with_index index protocol_block_header =
+    Printf.printf "%d:\n" (index + 1);
+    print_protocol_block_header protocol_block_header;
+  in
+  print_endline "Bitcoin Headers Message:";
+  Printf.printf "\tHeaders (%d entries):\n" (List.length m.block_headers);
+  List.iteri print_protocol_block_header_with_index m.block_headers
+;;
+
 let print_message_payload = function
   | VersionPayload p -> print_version_message p
   | VerAckPayload -> print_verack_message ()
@@ -190,6 +227,8 @@ let print_message_payload = function
   | GetBlocksPayload p -> print_block_locator_list_message_with_header p "Get Blocks"
   | GetHeadersPayload p -> print_block_locator_list_message_with_header p "Get Headers"
   | TxPayload p -> print_tx_message p
+  | BlockPayload p -> print_block_message p
+  | HeadersPayload p -> print_headers_message p
   | UnknownPayload s -> Printf.printf "Unknown Message Payload (%d bytes)\n" (Bitstring.bitstring_length s)
 ;;
 

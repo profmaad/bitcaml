@@ -312,14 +312,14 @@ let parse_transaction bits =
     | { _ } -> (None, bits)
   in
   match data_format_version with
-  | None -> None
+  | None -> (None, bits)
   | Some data_format_version ->
     match parse_varint bits with
-    | None, rest -> None
+    | None, rest -> (None, rest)
     | Some input_count, bits ->
       let inputs, bits = parse_inputs input_count 0L [] bits in
       match parse_varint bits with
-      | None, rest -> None
+      | None, rest -> (None, rest)
       | Some output_count, bits ->
 	let outputs, bits = parse_outputs output_count 0L [] bits in
 	if
@@ -340,8 +340,85 @@ let parse_transaction bits =
 ;;
 let parse_tx_message bits =
   match parse_transaction bits with
-  | None -> None
-  | Some transaction -> Some (TxPayload transaction)
+  | None, _ -> None
+  | Some transaction, _ -> Some (TxPayload transaction)
+;;
+
+let parse_block_header bits = 
+  bitmatch bits with
+  | { version : 4*8 : littleendian;
+      previous_block_hash : 32*8 : string;
+      merkle_root : 32*8 : string;
+      timestamp : 4*8 : littleendian;
+      difficulty_target : 4*8 : littleendian;
+      nonce : 4*8 : littleendian;
+      rest : -1 : bitstring
+    } ->
+    (Some {
+      block_version = Int32.to_int version;
+      previous_block_hash = previous_block_hash;
+      merkle_root = merkle_root;
+      block_timestamp = (Utils.unix_tm_of_int32 timestamp);
+      block_difficulty_target = Int32.to_int difficulty_target;
+      block_nonce = nonce;
+    }, rest)
+  | { _ } -> (None, bits)
+;;
+let parse_protocol_block_header bits =
+  match parse_block_header bits with
+  | None, rest -> (None, rest)
+  | Some block_header, bits ->
+    match parse_varint bits with
+    | None, rest -> (None, rest)
+    | Some transaction_count, bits ->
+      (Some {
+	basic_block_header = block_header;
+	block_transaction_count = transaction_count;
+      }, bits)
+;;    
+let parse_block bits =
+  let rec parse_transaction_list count index acc bits =
+    if index >= count then (acc, bits) else
+      match parse_transaction bits with
+      | None, rest -> (acc, rest)
+      | Some transaction, bits ->
+	parse_transaction_list count (Int64.add index 1L) (transaction :: acc) bits
+  in
+  match parse_protocol_block_header bits with
+  | None, rest -> (None, rest)
+  | Some protocol_block_header, bits ->
+    let transaction_count = protocol_block_header.block_transaction_count in
+    let transactions, bits = parse_transaction_list transaction_count 0L [] bits in
+    if (List.length transactions != (Int64.to_int transaction_count)) then (None, bits)
+    else
+      (Some {
+	block_header = protocol_block_header.basic_block_header;
+	block_transactions = List.rev transactions;
+      }, bits)
+;;
+let parse_block_message bits =
+  match parse_block bits with
+  | None, _ -> None
+  | Some block, _ -> Some (BlockPayload block)
+;;
+
+let parse_headers_message bits =
+  let rec parse_protocol_block_header_list count index acc bits =
+    if index >= count then (acc, bits) else
+      match parse_protocol_block_header bits with
+      | None, rest -> (acc, rest)
+      | Some protocol_block_header, bits ->
+	parse_protocol_block_header_list count (Int64.add index 1L) (protocol_block_header :: acc) bits
+  in
+  match parse_varint bits with
+  | None, rest -> None
+  | Some block_header_count, bits ->
+    let protocol_block_headers, bits = parse_protocol_block_header_list block_header_count 0L [] bits in
+    if (List.length protocol_block_headers != (Int64.to_int block_header_count)) then None
+    else
+      Some (HeadersPayload {
+	block_headers = List.rev protocol_block_headers;
+      })
 ;;
 
 let parse_payload protocol_version payload_bitstring = function
@@ -355,6 +432,8 @@ let parse_payload protocol_version payload_bitstring = function
   | GetBlocksCommand -> parse_getblocks_message payload_bitstring
   | GetHeadersCommand -> parse_getheaders_message payload_bitstring
   | TxCommand -> parse_tx_message payload_bitstring
+  | BlockCommand -> parse_block_message payload_bitstring
+  | HeadersCommand -> parse_headers_message payload_bitstring
   | _ -> Some (UnknownPayload payload_bitstring)
 ;;
 
