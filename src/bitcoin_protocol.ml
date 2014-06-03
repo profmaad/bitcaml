@@ -66,7 +66,7 @@ type version_message =
     timestamp : Unix.tm;
     receiver_address : network_address;
     sender_address : network_address option;
-    random_nonce : string option;
+    random_nonce : int64 option;
     user_agent : string option;
     start_height : int option;
     relay : bool option;

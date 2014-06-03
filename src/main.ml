@@ -7,7 +7,7 @@ let test_version_message () =
     port = Config.peer_port;
   } in
   let sender_address = receiver_address in
-  let random_nonce = Utils.le_bytestring_of_int64 (Random.int64 Int64.max_int) 8 in
+  let random_nonce = Random.int64 Int64.max_int in
   let payload = {
     Bitcoin.Protocol.protocol_version = Config.bitcoin_protocol_version;
     node_services = services_set;

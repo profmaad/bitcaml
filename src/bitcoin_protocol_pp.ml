@@ -67,7 +67,7 @@ let print_version_message m =
   Printf.printf "\tTimestamp: %s\n" (Utils.string_of_unix_tm m.timestamp);
   Printf.printf "\tReceiver: %s\n" (pp_string_of_network_address m.receiver_address);
   Option.may (fun sender_address -> Printf.printf "\tSender: %s\n" (pp_string_of_network_address sender_address)) m.sender_address;
-  Option.may (fun random_nonce -> print_string "\tRandom Nonce: "; Utils.print_hex_string random_nonce 0; print_newline()) m.random_nonce;
+  Option.may (fun random_nonce -> Printf.printf "\tRandom Nonce: 0x%08Lx\n" random_nonce) m.random_nonce;
   Option.may (fun user_agent -> Printf.printf "\tUser Agent: %s\n" user_agent) m.user_agent;
   Option.may (fun start_height -> Printf.printf "\tStarting block height: %d\n" start_height) m.start_height;
   Option.may (fun relay -> Printf.printf "\tRelay transactions?: %s\n" (if relay then "Yes" else "No")) m.relay
@@ -185,7 +185,7 @@ let print_block_header header =
   Printf.printf "\tMerkle Tree Root: %s\n" (Utils.hex_string_of_hash_string header.merkle_root);
   Printf.printf "\tCreated at: %s\n" (Utils.string_of_unix_tm header.block_timestamp);
   Printf.printf "\tDifficulty: %u\n" header.block_difficulty_target;
-  Printf.printf "\tNonce: %lu\n" header.block_nonce;
+  Printf.printf "\tNonce: 0x%04lu\n" header.block_nonce;
 ;;
 let print_protocol_block_header header =
   print_block_header header.basic_block_header;

@@ -102,7 +102,7 @@ let parse_version_message bits =
   let parse_version_message_v106 message bits =
     bitmatch bits with
     | { addr_from : 26*8 : bitstring;
-	nonce : 8*8 : string;
+	nonce : 8*8 : littleendian;
 	user_agent : ((bitstring_length bits) - (26+8+4 + (if message.protocol_version >= 70001 then 1 else 0))*8) : bitstring; (* we could properly parse a var_string at this position, but that would involve splitting this parser in two again. For version messages, we can determine the length of the var_string so we parse it out as a bitstring here and then extract the actual string below *)
 	start_height : 4*8 : littleendian;
 	rest : -1 : bitstring

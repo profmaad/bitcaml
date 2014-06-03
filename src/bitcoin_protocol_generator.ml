@@ -1,7 +1,7 @@
 open Bitcoin_protocol;;
 open Bitstring;;
 
-let default_random_nonce = "\x00\x00\xde\xad\xbe\xef\x00\x00";;
+let default_random_nonce = 0x0000deadbeef0000L;;
 
 let bitstring_of_header header =
   BITSTRING {
@@ -46,7 +46,7 @@ let bitstring_of_version_message m =
       BITSTRING {
 	message_bitstring : -1 : bitstring;
 	bitstring_of_network_address (Option.default { services = ServiceSet.empty; address = String.make 16 '\x00'; port = 0 } m.sender_address) : 26*8 : bitstring;
-	Option.default default_random_nonce m.random_nonce : 8*8 : string;
+	Option.default default_random_nonce m.random_nonce : 8*8 : littleendian;
 	varstring_bitstring_of_string (Option.default "" m.user_agent) : -1 : bitstring;
 	Int32.of_int (Option.default 0 m.start_height) : 4*8 : littleendian
       }
