@@ -118,7 +118,7 @@ let handle_connection peer =
 	let received_message = receive_message !peer_ref in
 	match received_message with
 	| None -> connection_fsm state
-	| Some ({ network = network; payload = VersionPayload p } as m) ->
+	| Some ({ network = network; payload = VersionPayload p } as m) when network = peer.peer_network ->
 	  peer_ref := { !peer_ref with peer_version = p };
 	  connection_fsm (transition state m)
 	| Some m -> connection_fsm (transition state m)
@@ -132,7 +132,7 @@ let exchange_addresses peer =
   let addresses_message = receive_message peer in
   match addresses_message with
   | Some ({ network = network;
-	    payload = AddrPayload addresses_message } as m) ->
+	    payload = AddrPayload addresses_message } as m) when network = peer.peer_network ->
     debug_may peer (fun () -> Bitcoin_protocol_pp.print_message m);
     addresses_message.addresses
   | _ ->
@@ -172,7 +172,7 @@ let rec download_block_chain peer known_block_hashes =
   match receive_message_with_command InvCommand peer with
   | None -> debug_may peer (fun () -> print_endline "No valid block hashes received.")
   | Some { network = network;
-	   payload = InvPayload inventory } ->
+	   payload = InvPayload inventory } when network = peer.peer_network ->
     let new_hashes = block_hashes_of_inventory inventory.inventory in
     let known_block_hashes = new_hashes @ known_block_hashes in
     debug_may peer (fun () -> Printf.printf "Received %d new block hashes, now have a total of %d block hashes.\n" (List.length new_hashes) (List.length known_block_hashes));
@@ -190,7 +190,7 @@ let rec snoop_transactions peer =
   | None -> ()
   | Some ({ network = network;
 	    payload = InvPayload inv_payload
-	  } as inv_message) ->
+	  } as inv_message) when network = peer.peer_network ->
     debug_may peer (fun () -> Bitcoin_protocol_pp.print_message inv_message);
     ( match List.filter inventory_item_is_transaction inv_payload.inventory with
     | [] -> snoop_transactions peer
