@@ -206,6 +206,7 @@ let bitstring_of_payload = function
   | PingPayload m -> bitstring_of_ping_message m
   | PongPayload m -> bitstring_of_pong_message m
   | RejectPayload m -> bitstring_of_reject_message m
+  | AlertPayload bs -> bs
   | UnknownPayload bs -> bs
 ;;
 

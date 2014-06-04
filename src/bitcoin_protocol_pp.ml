@@ -264,6 +264,7 @@ let print_message_payload = function
   | PingPayload p -> print_nonce_message_with_header p "Ping"
   | PongPayload p -> print_nonce_message_with_header p "Pong"
   | RejectPayload p -> print_reject_message p;
+  | AlertPayload s -> Printf.printf "Alert Message Payload (%d bytes)\n" (Bitstring.bitstring_length s)
   | UnknownPayload s -> Printf.printf "Unknown Message Payload (%d bytes)\n" (Bitstring.bitstring_length s)
 ;;
 

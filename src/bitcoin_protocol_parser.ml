@@ -478,6 +478,7 @@ let parse_payload protocol_version payload_bitstring = function
   | MemPoolCommand -> parse_mempool_message payload_bitstring
   | PingCommand -> parse_ping_message payload_bitstring
   | PongCommand -> parse_pong_message payload_bitstring
+  | AlertCommand -> Some (AlertPayload payload_bitstring)
   | _ -> Some (UnknownPayload payload_bitstring)
 ;;
 

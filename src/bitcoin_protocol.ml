@@ -184,7 +184,7 @@ type reject_message =
     rejection_code : rejection_reason;
     rejection_reason : string;
   };;
-  
+
 type message_payload = 
 | VersionPayload of version_message
 | VerAckPayload
@@ -202,6 +202,7 @@ type message_payload =
 | PingPayload of nonce_message
 | PongPayload of nonce_message
 | RejectPayload of reject_message
+| AlertPayload of Bitstring.t (* TODO: actually parse alerts and verify the signature *)
 | UnknownPayload of Bitstring.t
 ;;
 
@@ -294,6 +295,7 @@ let command_of_message_payload = function
   | PingPayload p -> PingCommand
   | PongPayload p -> PongCommand
   | RejectPayload p -> RejectCommand
+  | AlertPayload p -> AlertCommand
   | UnknownPayload p -> UnknownCommand "UNKNOWN"
 ;;
 
