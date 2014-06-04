@@ -17,8 +17,6 @@ module Crypto = struct
   include Bitcoin_crypto;;
 end
 
-
-
-
-
-
+module Peer = struct
+  include Bitcoin_peer;;
+end
