@@ -79,7 +79,7 @@ let () =
       print_endline "PASSED";
       Bitcoin.Protocol.PP.print_block block;
       ignore (Bitcoin.Blockchain.insert_block block.Bitcoin.Protocol.block_header db))
-    Config.testnet3_initial_block_hashes;
+    (List.rev Config.testnet3_initial_block_hashes);
   
   print_string "Testing peer connection via ping/pong...\t";
   ( match Bitcoin.Peer.test_connection peer with

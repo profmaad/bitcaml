@@ -84,18 +84,19 @@ let insert_block_as_orphan hash previous_block_hash db =
 	    previous_block_hash)
 ;;
 
-let resolve_orphans inserted_hash db =
+let rec resolve_orphans inserted_hash db =
   let resolve_orphan (id, hash, previous_block_hash) =
     match insert_block_into_blockchain hash previous_block_hash db with
     | Some _ -> 
       S.execute db
 	sqlc"DELETE FROM orphans WHERE id = %L"
-	id
+	id;
+      resolve_orphans hash db
     | None -> ()
   in
   S.iter db
     resolve_orphan
-    sqlc"SELECT @L{id}, @s{hash}, @s{previous_block_hash} FROM orphans WHERE previous_block_hash LIKE %s" inserted_hash
+    sqlc"SELECT @L{id}, @s{hash}, @s{previous_block_hash} FROM orphans WHERE previous_block_hash LIKE %s" inserted_hash  
 ;;
     
 let insert_block header db =
