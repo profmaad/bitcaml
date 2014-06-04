@@ -212,8 +212,15 @@ let get_block peer block_hash =
   } in
   send_payload peer payload;
   match receive_message_with_command BlockCommand peer with
-  | None -> debug_may peer (fun () -> print_endline "No valid block received.")
-  | Some m -> debug_may peer (fun () -> Bitcoin_protocol_pp.print_message m)
+  | None ->
+    debug_may peer (fun () -> print_endline "No valid block received.");
+    None
+  | Some ({ network = network;
+	    payload = BlockPayload block;
+	  } as m) when network = peer.peer_network ->
+    debug_may peer (fun () -> Bitcoin_protocol_pp.print_message m);
+    Some block
+  | _ -> None
 ;;
 
 let test_connection peer =
