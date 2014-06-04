@@ -157,6 +157,14 @@ let construct_block_locator_list_message protocol_version hash_stop known_block_
   }
 ;;
 
+(* process:
+ * send getblocks with only genesis block hash and 0 as stop
+ * receive inv, send getdata, receive blocks / for each block
+ * LOOP
+ * * insert into blockchain
+ * * if inserted as orphan: send getblocks with existing hashes and this blocks previous hash as stop
+ * LOOP END
+ *)
 let rec download_block_chain peer known_block_hashes =
   let rec block_hashes_of_inventory = function
     | [] -> []
@@ -246,4 +254,35 @@ let test_connection peer =
   | Some x ->
     debug_may peer (fun () -> print_endline "No valid pong received.");
     false
+;;
+
+let answer_ping peer ping =
+  let pong = PongPayload { message_nonce = ping.message_nonce; } in
+  send_payload peer pong
+;;
+
+let handle_payload peer payload =
+  let discard_payload () =
+    debug_may peer (fun () ->
+      Printf.printf "Received %s payload, discarding\n" (Bitcoin_protocol_pp.pp_string_of_command (command_of_message_payload payload)))
+  in
+  match payload with
+  | VersionPayload p -> discard_payload ()
+  | VerAckPayload -> discard_payload ()
+  | AddrPayload p -> discard_payload ()
+  | GetAddrPayload -> () (* return our local address? *)
+  | InvPayload p -> () (* send getdata for blocks *)
+  | GetDataPayload p -> () (* lookup blocks in blockchain db and return *)
+  | NotFoundPayload p -> discard_payload ()
+  | GetBlocksPayload p -> () (* lookup in blockchain db and return inv? how? *)
+  | GetHeadersPayload p -> () (* ditto *)
+  | TxPayload p -> debug_may peer (fun () -> Bitcoin_protocol_pp.print_message_payload payload)
+  | BlockPayload p -> () (* insert into blockchain, handle if orphan, ... *)
+  | HeadersPayload p -> discard_payload ()
+  | MemPoolPayload -> discard_payload () (* we don't keep a memory pool yet *)
+  | PingPayload p -> answer_ping peer p
+  | PongPayload p -> discard_payload ()
+  | RejectPayload p -> discard_payload ()
+  | AlertPayload p -> discard_payload ()
+  | UnknownPayload p -> discard_payload ()
 ;;
