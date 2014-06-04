@@ -442,6 +442,26 @@ let parse_pong_message bits =
   | Some nonce_message -> Some (PongPayload nonce_message)
 ;;
 
+let parse_reject_message bits =
+  match parse_varstring bits with
+  | None, _ -> None
+  | Some rejected_message, bits ->
+    bitmatch bits with
+    | { rejection_code : 1*8 : littleendian;
+	rest : -1 : bitstring
+      } ->
+      ( match parse_varstring rest with
+      | None, _ -> None
+      | Some rejection_reason, _ ->
+	Some (RejectPayload {
+	  rejected_message = rejected_message;
+	  rejection_code = rejection_reason_of_int rejection_code;
+	  rejection_reason = rejection_reason;
+	})
+      )
+    | { _ } -> None
+;;
+
 let parse_payload protocol_version payload_bitstring = function
   | VersionCommand -> parse_version_message payload_bitstring
   | VerAckCommand -> parse_verack_message payload_bitstring

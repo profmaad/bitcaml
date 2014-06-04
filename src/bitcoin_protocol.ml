@@ -166,6 +166,25 @@ type nonce_message =
     message_nonce : int64;
   };;
 
+type rejection_reason =
+| RejectionMalformed
+| RejectionInvalid
+| RejectionObsolete
+| RejectionDuplicate
+| RejectionNonstandard
+| RejectionDust
+| RejectionInsufficientFee
+| RejectionCheckpoint
+| RejectionUnknown of int
+;;
+
+type reject_message =
+  {
+    rejected_message : string;
+    rejection_code : rejection_reason;
+    rejection_reason : string;
+  };;
+  
 type message_payload = 
 | VersionPayload of version_message
 | VerAckPayload
@@ -182,6 +201,7 @@ type message_payload =
 | MemPoolPayload
 | PingPayload of nonce_message
 | PongPayload of nonce_message
+| RejectPayload of reject_message
 | UnknownPayload of Bitstring.t
 ;;
 
@@ -273,6 +293,7 @@ let command_of_message_payload = function
   | MemPoolPayload -> MemPoolCommand
   | PingPayload p -> PingCommand
   | PongPayload p -> PongCommand
+  | RejectPayload p -> RejectCommand
   | UnknownPayload p -> UnknownCommand "UNKNOWN"
 ;;
 
@@ -308,4 +329,27 @@ let int32_of_transaction_lock_time = function
   | AlwaysLockedTransaction -> 0x0l
   | BlockLockedTransaction i -> i
   | TimestampLockedTransaction timestamp -> Utils.int32_of_unix_tm timestamp
+;;
+
+let rejection_reason_of_int = function
+  | 0x01 -> RejectionMalformed
+  | 0x10 -> RejectionInvalid
+  | 0x11 -> RejectionObsolete
+  | 0x12 -> RejectionDuplicate
+  | 0x40 -> RejectionNonstandard
+  | 0x41 -> RejectionDust
+  | 0x42 -> RejectionInsufficientFee
+  | 0x43 -> RejectionCheckpoint
+  | i -> RejectionUnknown i
+;;
+let int_of_rejection_reason = function
+  | RejectionMalformed -> 0x01
+  | RejectionInvalid -> 0x10
+  | RejectionObsolete -> 0x11
+  | RejectionDuplicate -> 0x12
+  | RejectionNonstandard -> 0x40
+  | RejectionDust -> 0x41
+  | RejectionInsufficientFee -> 0x42
+  | RejectionCheckpoint -> 0x43
+  | RejectionUnknown i -> i
 ;;

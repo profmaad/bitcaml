@@ -228,6 +228,25 @@ let print_nonce_message_with_header m message_type =
   print_nonce_message m
 ;;
 
+let pp_string_of_rejection_code = function
+  | RejectionMalformed -> "Malformed"
+  | RejectionInvalid -> "Invalid"
+  | RejectionObsolete -> "Obsolete"
+  | RejectionDuplicate -> "Duplicate"
+  | RejectionNonstandard -> "Nonstandard transaction"
+  | RejectionDust -> "Dust amount"
+  | RejectionInsufficientFee -> "Insufficient transaction fee"
+  | RejectionCheckpoint -> "Checkpoint"
+  | RejectionUnknown i -> Printf.sprintf "Unknown (%d)" i
+;;
+
+let print_reject_message m =
+  print_endline "Bitcoin Rejection Message:";
+  Printf.printf "\tRejected Message: %s\n" m.rejected_message;
+  Printf.printf "\tReason: %s\n" (pp_string_of_rejection_code m.rejection_code);
+  Printf.printf "\tDescription: %s\n" m.rejection_reason
+;;
+
 let print_message_payload = function
   | VersionPayload p -> print_version_message p
   | VerAckPayload -> print_verack_message ()
@@ -244,6 +263,7 @@ let print_message_payload = function
   | MemPoolPayload -> print_mempool_message ()
   | PingPayload p -> print_nonce_message_with_header p "Ping"
   | PongPayload p -> print_nonce_message_with_header p "Pong"
+  | RejectPayload p -> print_reject_message p;
   | UnknownPayload s -> Printf.printf "Unknown Message Payload (%d bytes)\n" (Bitstring.bitstring_length s)
 ;;
 
