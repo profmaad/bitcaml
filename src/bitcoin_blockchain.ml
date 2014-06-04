@@ -23,6 +23,13 @@ let init_db db =
     sqlinit"CREATE INDEX IF NOT EXISTS previous_block_index ON blockchain (previous_block);";
 ;;
 
+type insertion_result =
+| InsertedIntoBlockchain of int64
+| InsertedAsOrphan of int64
+| InsertionFailed
+| NotInsertedExisted
+;;
+
 let block_hash header =
   let header_bitstring = Bitcoin_protocol_generator.bitstring_of_block_header header in
   Bitcoin_crypto.double_sha256 (Bitstring.string_of_bitstring header_bitstring)
@@ -63,36 +70,40 @@ let orphan_exists hash db =
 
 let insert_block_into_blockchain hash previous_block_hash db =
   match block_exists hash db with
-  | true -> None
+  | true -> NotInsertedExisted
   | false ->
     match retrieve_block previous_block_hash db with
-    | None -> None
+    | None -> InsertionFailed
     | Some (previous_block_id, _, previous_block_height, _) ->
-      Some (S.insert db
-	      sqlc"INSERT INTO blockchain(hash, height, previous_block) VALUES(%s, %L, %L)"
-	      hash
-	      (Int64.add previous_block_height 1L)
-	      previous_block_id)
+      let record_id = S.insert db
+	sqlc"INSERT INTO blockchain(hash, height, previous_block) VALUES(%s, %L, %L)"
+	hash
+	(Int64.add previous_block_height 1L)
+	previous_block_id
+      in
+      InsertedIntoBlockchain record_id
 ;;
 let insert_block_as_orphan hash previous_block_hash db =
   match orphan_exists hash db with
-  | true -> None
+  | true -> NotInsertedExisted
   | false ->
-    Some (S.insert db
-	    sqlc"INSERT INTO orphans(hash, previous_block_hash) VALUES(%s, %s)"
-	    hash
-	    previous_block_hash)
+    let record_id = S.insert db
+      sqlc"INSERT INTO orphans(hash, previous_block_hash) VALUES(%s, %s)"
+      hash
+      previous_block_hash
+    in
+    InsertedAsOrphan record_id
 ;;
 
 let rec resolve_orphans inserted_hash db =
   let resolve_orphan (id, hash, previous_block_hash) =
     match insert_block_into_blockchain hash previous_block_hash db with
-    | Some _ -> 
+    | InsertedIntoBlockchain _ ->
       S.execute db
 	sqlc"DELETE FROM orphans WHERE id = %L"
 	id;
       resolve_orphans hash db
-    | None -> ()
+    | _ -> ()
   in
   S.iter db
     resolve_orphan
@@ -108,14 +119,14 @@ let insert_block header db =
     else (
       (* we know the previous block, we can insert this block into the chain *)
       match insert_block_into_blockchain hash header.previous_block_hash db with
-      | None -> None
-      | Some x as result ->
+      | InsertedIntoBlockchain i as result ->
 	(* we inserted a new block into the blockchain, so we should check whether this resolved any dangling orphans *)
 	resolve_orphans hash db;
 	result
+      | result -> result
     )
   else
-    None
+    NotInsertedExisted
 ;;
 
 (* we need a special implementation for this, since no previous block exists for the genesis block *)
