@@ -130,7 +130,14 @@ let handle_connection peer =
 let exchange_addresses peer =
   send_payload peer GetAddrPayload;
   let addresses_message = receive_message peer in
-  Option.default_f (fun () -> print_endline "No valid addresses received.") Bitcoin_protocol_pp.print_message addresses_message
+  match addresses_message with
+  | Some ({ network = network;
+	    payload = AddrPayload addresses_message } as m) ->
+    debug_may peer (fun () -> Bitcoin_protocol_pp.print_message m);
+    addresses_message.addresses
+  | _ ->
+    debug_may peer (fun () -> print_endline "No valid addresses received.");
+    []
 ;;
 
 let construct_block_locator_list_message protocol_version hash_stop known_block_hashes =
