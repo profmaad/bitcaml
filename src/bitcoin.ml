@@ -20,3 +20,7 @@ end
 module Peer = struct
   include Bitcoin_peer;;
 end
+
+module Blockchain = struct
+  include Bitcoin_blockchain;;
+end

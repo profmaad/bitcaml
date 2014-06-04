@@ -30,33 +30,57 @@ let connect_to_peer ip_address port =
 let close_peer_connection socket =
   Unix.sleep 1;
   Unix.close socket
-;;  
-    
+;;
+
+let no_debug peer = { peer with Bitcoin.Peer.peer_debug = false };;
+let debug peer = { peer with Bitcoin.Peer.peer_debug = true };;
+
 (* main *)
 let () =
   Random.self_init ();
+  Printf.printf "Opening and initializing blockchain db at %s...\t" Config.testnet3_blockchain_db;
+  let db = Bitcoin.Blockchain.open_db Config.testnet3_blockchain_db in
+  print_endline "DONE";
+  print_string "Establishing TCP connection to peer...\t\t";
   let peer_socket = connect_to_peer Config.peer_ip_address Config.peer_port in
+  print_endline "DONE";
   let peer = {
     Bitcoin.Peer.peer_network = Bitcoin.Protocol.TestNet3;
     local_version = local_version ();
     peer_version = Bitcoin.Peer.default_version;
     peer_socket = peer_socket;
-    peer_debug = true;
+    peer_debug = false;
   } in
+  print_string "Initializing peer connection...\t\t\t";
   let peer = Bitcoin.Peer.handle_connection peer in
-  Printf.printf "Peer is running protocol version %d\n" peer.Bitcoin.Peer.peer_version.Bitcoin.Protocol.protocol_version;
-  (* exchange_addresses peer_protocol_version client_socket; *)
+  Printf.printf "protocol version %d\n" peer.Bitcoin.Peer.peer_version.Bitcoin.Protocol.protocol_version;
+  print_string "Asking peer for new addresses...\t\t";
+  let new_addresses = Bitcoin.Peer.exchange_addresses peer in
+  Printf.printf "%d new addresses received\n" (List.length new_addresses);
   (* download_block_chain peer_protocol_version [Config.testnet3_genesis_block_hash] client_socket; *)
   (* snoop_transactions peer_protocol_version client_socket; *)
-  print_endline "Retrieving TestNet3 genesis block...";
-  Bitcoin.Peer.get_block peer Config.testnet3_genesis_block_hash;
-  print_endline "Retrieving a TestNet3 test block...";
-  Bitcoin.Peer.get_block peer Config.testnet3_test_block;
-  ( match Bitcoin.Peer.test_connection peer with
-  | true -> print_endline "Connection to peer intact"
-  | false -> print_endline "Connection to peer broken"
+  print_string "Retrieving TestNet3 genesis block...\t\t";
+  ( match Bitcoin.Peer.get_block peer Config.testnet3_genesis_block_hash with
+  | None -> print_endline "FAILED"
+  | Some block -> print_endline "PASSED"; Bitcoin.Protocol.PP.print_block block
   );
-  close_peer_connection peer_socket
+  print_string "Retrieving a TestNet3 initial blocks...\t\t";
+  List.iter (fun hash ->
+    match Bitcoin.Peer.get_block peer hash with
+    | None -> print_endline "FAILED"
+    | Some block ->
+      print_endline "PASSED";
+      Bitcoin.Protocol.PP.print_block block;
+      ignore (Bitcoin.Blockchain.insert_block block.Bitcoin.Protocol.block_header db))
+    Config.testnet3_initial_block_hashes;
+  print_string "Testing peer connection via ping/pong...\t";
+  ( match Bitcoin.Peer.test_connection peer with
+  | true -> print_endline "PASSED"
+  | false -> print_endline "FAILED"
+  );
+  print_string "Disconnecting from peer...\t\t\t";
+  close_peer_connection peer_socket;
+  print_endline "DONE"
 ;;
   
 
