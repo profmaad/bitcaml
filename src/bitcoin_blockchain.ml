@@ -52,7 +52,11 @@ let difficulty_of_difficulty_bits bits = exp (log_difficulty_of_difficulty_bits 
 
 let retrieve_block hash db =
   S.select_one_maybe db
-    sqlc"SELECT @L{id}, @s{hash}, @L{height}, @L{previous_block}, @f{cumulative_log_difficulty} FROM blockchain WHERE hash LIKE %s" hash
+    sqlc"SELECT @L{id}, @s{hash}, @L{height}, @L{previous_block}, @f{cumulative_log_difficulty} FROM blockchain WHERE hash = %s" hash
+;;
+let retrieve_block_at_height height db =
+  S.select_one_maybe db
+    sqlc"SELECT @L{id}, @s{hash}, @L{height}, @L{previous_block}, @f{cumulative_log_difficulty} FROM blockchain WHERE height = %L ORDER BY cumulative_log_difficulty DESC" height
 ;;
 
 let block_id hash db =
@@ -82,9 +86,15 @@ let retrieve_latest_mainchain_block db =
     sqlc"SELECT @L{id}, @s{hash}, @L{height}, @L{previous_block}, @f{cumulative_log_difficulty} FROM blockchain ORDER BY height DESC, cumulative_log_difficulty DESC"
 ;;
 
+let mainchain_height db =
+  match retrieve_latest_mainchain_block db with
+  | None -> 0L
+  | Some (_, _, height, _, _) -> height
+;;
+
 let retrieve_orphan hash db =
   S.select_one_maybe db
-    sqlc"SELECT @L{id}, @s{hash}, @s{previous_block_hash}, @f{log_difficulty} FROM orphans WHERE hash LIKE %s" hash
+    sqlc"SELECT @L{id}, @s{hash}, @s{previous_block_hash}, @f{log_difficulty} FROM orphans WHERE hash = %s" hash
 ;;
 
 let orphan_exists hash db =
@@ -134,7 +144,7 @@ let rec resolve_orphans inserted_hash db =
   in
   S.iter db
     resolve_orphan
-    sqlc"SELECT @L{id}, @s{hash}, @s{previous_block_hash}, @f{log_difficulty} FROM orphans WHERE previous_block_hash LIKE %s" inserted_hash  
+    sqlc"SELECT @L{id}, @s{hash}, @s{previous_block_hash}, @f{log_difficulty} FROM orphans WHERE previous_block_hash = %s" inserted_hash
 ;;
     
 let insert_block header db =
