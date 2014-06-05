@@ -22,9 +22,9 @@ let bitstring_of_network_address network_address =
 
 let varint_bitstring_of_int64 = function
   | i when i < 0xfdL -> BITSTRING { Int64.to_int i : 1*8 : littleendian }
-  | i when i < 0xffffL -> BITSTRING { Int64.to_int i : 2*8 : littleendian }
-  | i when i < 0xffffffffL -> BITSTRING { Int64.to_int32 i : 4*8 : littleendian }
-  | i -> BITSTRING { i : 8*8 : littleendian }
+  | i when i < 0xffffL -> BITSTRING { 0xfd : 1*8; Int64.to_int i : 2*8 : littleendian }
+  | i when i < 0xffffffffL -> BITSTRING { 0xfe : 1*8; Int64.to_int32 i : 4*8 : littleendian }
+  | i -> BITSTRING { 0xff : 1*8; i : 8*8 : littleendian }
 ;;
 
 let varstring_bitstring_of_string s = 

@@ -7,6 +7,7 @@ type peer =
     peer_version : version_message;
     peer_socket : Unix.file_descr;
     peer_debug : bool;
+    blockchain : Bitcoin_blockchain.t_db;
   };;
 
 let default_version =
@@ -106,7 +107,7 @@ let transition state message = match (state, message.payload) with
   | state, _ -> state
 ;;
 
-let handle_connection peer =
+let initialize_connection peer =
   let peer_ref = ref peer in
   let rec connection_fsm state =
     let new_state = state_entry peer state in
@@ -140,75 +141,37 @@ let exchange_addresses peer =
     []
 ;;
 
-let construct_block_locator_list_message protocol_version hash_stop known_block_hashes =
-  let rec select_block_hashes step_size step count hashes = 
-    let next_step_size = if count >= 10 then step_size*2 else step_size in
-    match hashes, step with
-    | [], _ -> []
-    | hash :: [], _ -> [hash] (* always include the last hash (the genesis block hash) as an anchor *)
-    | hash :: hashes, 0 -> hash :: (select_block_hashes next_step_size (next_step_size - 1) (count + 1) hashes)
-    | hash :: hashes, x -> select_block_hashes step_size (step - 1) count hashes
+let construct_block_locator_list_message peer hash_stop =
+  let rec select_block_hashes step_size height count blockchain = 
+    let next_step_size = if count >= 10L then Int64.mul step_size 2L else step_size in
+    let height = if height <= 0L then 0L else height in
+    match Bitcoin_blockchain.retrieve_block_at_height height blockchain with
+    | None -> []
+    | Some (_, hash, _, _, _) ->
+      hash :: if height = 0L then [] else
+	  (select_block_hashes next_step_size (Int64.sub height next_step_size) (Int64.add count 1L) blockchain)
   in
-  let block_locator_hashes = select_block_hashes 1 0 0 known_block_hashes in
+  let mainchain_height = Bitcoin_blockchain.mainchain_height peer.blockchain in
+  debug_may peer (fun () -> Printf.printf "[INFO] current mainchain height: %Lu\n" mainchain_height);
+  let block_locator_hashes = select_block_hashes 1L mainchain_height 0L peer.blockchain in
   {
-    block_protocol_version = protocol_version;
+    block_protocol_version = peer.peer_version.protocol_version;
     block_locator_hashes = block_locator_hashes;
     block_locator_hash_stop = hash_stop;
   }
 ;;
 
-(* process:
- * send getblocks with only genesis block hash and 0 as stop
- * receive inv, send getdata, receive blocks / for each block
- * LOOP
- * * insert into blockchain
- * * if inserted as orphan: send getblocks with existing hashes and this blocks previous hash as stop
- * LOOP END
- *)
-let rec download_block_chain peer known_block_hashes =
-  let rec block_hashes_of_inventory = function
-    | [] -> []
-    | { inventory_item_type = BlockInventoryItem;
-	inventory_item_hash = hash; } :: inventory ->
-      hash :: (block_hashes_of_inventory inventory)
-    | item :: inventory -> block_hashes_of_inventory inventory
-  in
-  let get_blocks_payload = GetBlocksPayload (
-    construct_block_locator_list_message peer.peer_version.protocol_version (String.make 32 '\x00') known_block_hashes
-  ) in
-  send_payload peer get_blocks_payload;
-  match receive_message_with_command InvCommand peer with
-  | None -> debug_may peer (fun () -> print_endline "No valid block hashes received.")
-  | Some { network = network;
-	   payload = InvPayload inventory } when network = peer.peer_network ->
-    let new_hashes = block_hashes_of_inventory inventory.inventory in
-    let known_block_hashes = new_hashes @ known_block_hashes in
-    debug_may peer (fun () -> Printf.printf "Received %d new block hashes, now have a total of %d block hashes.\n" (List.length new_hashes) (List.length known_block_hashes));
-    download_block_chain peer known_block_hashes
-  | Some m ->
-    debug_may peer (fun () ->
-      print_endline "Received unexpected message:";
-      Bitcoin_protocol_pp.print_message m
-    )
+let initiate_blockchain_download peer =
+  send_payload peer (GetBlocksPayload (construct_block_locator_list_message peer (Utils.zero_hash)))
 ;;
 
-let rec snoop_transactions peer =
-  let inventory_item_is_transaction item = item.inventory_item_type = TransactionInventoryItem in
-  match receive_message_with_command InvCommand peer with
-  | None -> ()
-  | Some ({ network = network;
-	    payload = InvPayload inv_payload
-	  } as inv_message) when network = peer.peer_network ->
-    debug_may peer (fun () -> Bitcoin_protocol_pp.print_message inv_message);
-    ( match List.filter inventory_item_is_transaction inv_payload.inventory with
-    | [] -> snoop_transactions peer
-    | transaction_inventory ->
-      send_payload peer (GetDataPayload { inventory = transaction_inventory; });
-      snoop_transactions peer
-    )
-  | _ -> ()
+let block_inventory_of_inventory inventory =
+  List.filter (fun item -> item.inventory_item_type = BlockInventoryItem) inventory
 ;;
-
+let block_hashes_of_inventory p = 
+  List.map (fun item -> item.inventory_item_hash) (block_inventory_of_inventory p.inventory)
+;;
+  
 let get_block peer block_hash =
   let payload = GetDataPayload {
     inventory = [
@@ -231,58 +194,108 @@ let get_block peer block_hash =
   | _ -> None
 ;;
 
-let test_connection peer =
-  let ping_nonce = Random.int64 Int64.max_int in
-  let ping = PingPayload { message_nonce = ping_nonce; } in
-  send_payload peer ping;
-  match receive_message_with_command PongCommand peer with
-  | None ->
-    debug_may peer (fun () -> print_endline "No valid pong received.");
-    false
-  | Some ({
-    network = network;
-    payload = PongPayload { message_nonce = pong_nonce; };
-  } as pong) ->
-    debug_may peer (fun () -> Bitcoin_protocol_pp.print_message pong);
-    if pong_nonce = ping_nonce then (
-      debug_may peer (fun () -> print_endline "Ping Pong all day long!");
-      true
-    ) else (
-      debug_may peer (fun () -> print_endline "I pinged, but the pong wasn't what I expected!");
-      false;
-    )
-  | Some x ->
-    debug_may peer (fun () -> print_endline "No valid pong received.");
-    false
-;;
-
 let answer_ping peer ping =
   let pong = PongPayload { message_nonce = ping.message_nonce; } in
   send_payload peer pong
 ;;
 
+let own_addr_payload peer =
+  AddrPayload {
+    addresses = [
+      {
+	address_timestamp = Some (Utils.unix_tm_of_now ());
+	network_address = Option.get peer.local_version.sender_address;
+      }
+    ];
+  }
+;;
+
+let handle_block peer block =
+  let hash = Bitcoin_blockchain.block_hash block.block_header in
+  debug_may peer (fun () -> Printf.printf "[INFO] received block %s\n" (Utils.hex_string_of_hash_string hash));
+  match Bitcoin_blockchain.insert_block block.block_header peer.blockchain with
+  | Bitcoin_blockchain.InsertionFailed -> Printf.printf "[ERROR] failed to insert block %s\n" (Utils.hex_string_of_hash_string hash)
+  | Bitcoin_blockchain.NotInsertedExisted ->
+    Printf.printf "[WARNING] tried to insert block %s, which already existed\n" (Utils.hex_string_of_hash_string hash);
+    if Bitcoin_blockchain.orphan_exists hash peer.blockchain then
+      send_payload peer (GetBlocksPayload (construct_block_locator_list_message peer block.block_header.previous_block_hash))      
+  | Bitcoin_blockchain.InsertedIntoBlockchain id -> debug_may peer (fun () -> Printf.printf "[INFO] inserted block %s into blockchain (id: %Lu)\n" (Utils.hex_string_of_hash_string hash) id)
+  | Bitcoin_blockchain.InsertedAsOrphan id ->
+    debug_may peer (fun () -> Printf.printf "[INFO] inserted block %s as orphan (id: %Lu)\n" (Utils.hex_string_of_hash_string hash) id);
+    send_payload peer (GetBlocksPayload (construct_block_locator_list_message peer block.block_header.previous_block_hash))
+;;
+
+let handle_inv_payload peer p =
+  let block_inventory = block_inventory_of_inventory p.inventory in
+  if (List.length block_inventory) > 0 then (
+    debug_may peer (fun () -> Printf.printf "[INFO] sending getdata for %d blocks\n" (List.length block_inventory));
+    send_payload peer (GetDataPayload { inventory = block_inventory; })
+  )
+;;
+
+
+let handle_getdata_payload peer p =
+  send_payload peer (NotFoundPayload p)
+;;
+
 let handle_payload peer payload =
-  let discard_payload () =
+  let discard () =
     debug_may peer (fun () ->
       Printf.printf "Received %s payload, discarding\n" (Bitcoin_protocol_pp.pp_string_of_command (command_of_message_payload payload)))
   in
   match payload with
-  | VersionPayload p -> discard_payload ()
-  | VerAckPayload -> discard_payload ()
-  | AddrPayload p -> discard_payload ()
-  | GetAddrPayload -> () (* return our local address? *)
-  | InvPayload p -> () (* send getdata for blocks *)
-  | GetDataPayload p -> () (* lookup blocks in blockchain db and return *)
-  | NotFoundPayload p -> discard_payload ()
-  | GetBlocksPayload p -> () (* lookup in blockchain db and return inv? how? *)
-  | GetHeadersPayload p -> () (* ditto *)
-  | TxPayload p -> debug_may peer (fun () -> Bitcoin_protocol_pp.print_message_payload payload)
-  | BlockPayload p -> () (* insert into blockchain, handle if orphan, ... *)
-  | HeadersPayload p -> discard_payload ()
-  | MemPoolPayload -> discard_payload () (* we don't keep a memory pool yet *)
+  | VersionPayload p -> discard ()
+  | VerAckPayload -> discard ()
+  | AddrPayload p ->
+    debug_may peer (fun () -> Printf.printf "[INFO] received %d new addresses from peer\n" (List.length p.addresses));
+    discard ()
+  | GetAddrPayload -> send_payload peer (own_addr_payload peer)
+  | InvPayload p -> handle_inv_payload peer p
+  | GetDataPayload p -> handle_getdata_payload peer p (* we store neither full blocks nor transactions currently, so we don't have any means to answer getdata requests *)
+  | NotFoundPayload p -> discard ()
+  | GetBlocksPayload p -> discard () (* we don't store full, so we don't have the ability to answer this request *)
+  | GetHeadersPayload p -> discard () (* ditto *)
+  | TxPayload p ->
+    debug_may peer (fun () -> Bitcoin_protocol_pp.print_message_payload payload);
+    discard ()
+  | BlockPayload p -> handle_block peer p
+  | HeadersPayload p -> discard ()
+  | MemPoolPayload -> discard () (* we don't keep a memory pool yet *)
   | PingPayload p -> answer_ping peer p
-  | PongPayload p -> discard_payload ()
-  | RejectPayload p -> discard_payload ()
-  | AlertPayload p -> discard_payload ()
-  | UnknownPayload p -> discard_payload ()
+  | PongPayload p -> discard ()
+  | RejectPayload p -> discard ()
+  | AlertPayload p -> discard ()
+  | UnknownPayload p -> discard ()
+;;
+
+let rec message_loop peer =
+  (
+    match receive_message peer with
+    | None ->
+      debug_may peer (fun () -> print_endline "[INFO] invalid/no message received from peer");
+    | Some m when (m.network) = peer.peer_network ->
+      handle_payload peer m.payload
+    | Some m ->
+      debug_may peer (fun () -> Printf.printf "[INFO] invalid message (wrong network magic) received from peer: %s\n" (Bitcoin_protocol_pp.pp_string_of_magic m.network));
+  );
+  print_newline (); (* force flush of stdout *)
+  (* print_string "Continue? "; flush stdout; ignore (input_line stdin); *)
+  message_loop peer
+;;
+
+let handle_peer peer =
+  debug_may peer (fun () -> print_string "Initializing peer connection...\t\t\t");
+  let peer = initialize_connection peer in
+  debug_may peer (fun () -> Printf.printf "protocol version %d\n" peer.peer_version.protocol_version);
+
+  (* debug_may peer (fun () -> print_endline "Asking peer for new addresses..."); *)
+  (* send_payload peer GetAddrPayload; *)
+
+  debug_may peer (fun () -> print_endline "Initiating blockchain download...");
+  initiate_blockchain_download peer;
+
+  try
+    message_loop peer
+  with Bitcoin_protocol_parser.Connection_closed ->
+    debug_may peer (fun () -> print_endline "[INFO] connection closed by peer")
 ;;

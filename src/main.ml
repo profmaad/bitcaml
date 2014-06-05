@@ -17,7 +17,7 @@ let local_version () =
     random_nonce = Some random_nonce;
     user_agent = Some Config.user_agent;
     start_height = Some 0;
-    relay = Some true;
+    relay = Some false;
   }
 ;;
 
@@ -56,7 +56,7 @@ let () =
   print_endline (String.concat ", " (List.map (Printf.sprintf "%f") difficulty_test_results));
 
   Printf.printf "Opening and initializing blockchain db at %s...\t" Config.testnet3_blockchain_db;
-  let db = Bitcoin.Blockchain.open_db Config.testnet3_blockchain_db in
+  let blockchain_db = Bitcoin.Blockchain.open_db Config.testnet3_blockchain_db in
   print_endline "DONE";
 
   print_string "Establishing TCP connection to peer...\t\t";
@@ -68,41 +68,28 @@ let () =
     local_version = local_version ();
     peer_version = Bitcoin.Peer.default_version;
     peer_socket = peer_socket;
-    peer_debug = false;
+    peer_debug = true;
+    blockchain = blockchain_db;
   } in
-  print_string "Initializing peer connection...\t\t\t";
-  let peer = Bitcoin.Peer.handle_connection peer in
-  Printf.printf "protocol version %d\n" peer.Bitcoin.Peer.peer_version.Bitcoin.Protocol.protocol_version;
 
-  print_string "Asking peer for new addresses...\t\t";
-  let new_addresses = Bitcoin.Peer.exchange_addresses peer in
-  Printf.printf "%d new addresses received\n" (List.length new_addresses);
+  Bitcoin.Peer.handle_peer peer;
 
-  (* download_block_chain peer_protocol_version [Config.testnet3_genesis_block_hash] client_socket; *)
-  (* snoop_transactions peer_protocol_version client_socket; *)
+  (* print_string "Retrieving TestNet3 genesis block...\t\t"; *)
+  (* ( match Bitcoin.Peer.get_block peer Config.testnet3_genesis_block_hash with *)
+  (* | None -> print_endline "FAILED" *)
+  (* | Some block -> print_endline "PASSED"; Bitcoin.Protocol.PP.print_block block *)
+  (* ); *)
 
-  print_string "Retrieving TestNet3 genesis block...\t\t";
-  ( match Bitcoin.Peer.get_block peer Config.testnet3_genesis_block_hash with
-  | None -> print_endline "FAILED"
-  | Some block -> print_endline "PASSED"; Bitcoin.Protocol.PP.print_block block
-  );
-
-  print_string "Retrieving a TestNet3 initial blocks...\t\t";
-  List.iter (fun hash ->
-    match Bitcoin.Peer.get_block peer hash with
-    | None -> print_endline "FAILED"
-    | Some block ->
-      print_endline "PASSED";
-      Bitcoin.Protocol.PP.print_block block;
-      ignore (Bitcoin.Blockchain.insert_block block.Bitcoin.Protocol.block_header db))
-    (List.rev Config.testnet3_initial_block_hashes);
+  (* print_string "Retrieving a TestNet3 initial blocks...\t\t"; *)
+  (* List.iter (fun hash -> *)
+  (*   match Bitcoin.Peer.get_block peer hash with *)
+  (*   | None -> print_endline "FAILED" *)
+  (*   | Some block -> *)
+  (*     print_endline "PASSED"; *)
+  (*     Bitcoin.Protocol.PP.print_block block; *)
+  (*     ignore (Bitcoin.Blockchain.insert_block block.Bitcoin.Protocol.block_header blockchain_db)) *)
+  (*   (List.rev Config.testnet3_initial_block_hashes); *)
   
-  print_string "Testing peer connection via ping/pong...\t";
-  ( match Bitcoin.Peer.test_connection peer with
-  | true -> print_endline "PASSED"
-  | false -> print_endline "FAILED"
-  );
-
   print_string "Disconnecting from peer...\t\t\t";
   close_peer_connection peer_socket;
   print_endline "DONE"

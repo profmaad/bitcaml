@@ -2,6 +2,7 @@ open Bitcoin_protocol;;
 
 module Sqlexpr = Sqlexpr_sqlite.Make(Sqlexpr_concurrency.Id);;
 module S = Sqlexpr;;
+type t_db = S.db;;
 
 let init_db db = 
   S.execute db
@@ -117,6 +118,7 @@ let insert_block_into_blockchain hash previous_block_hash log_difficulty db =
 	previous_block_id
 	(previous_block_cld +. log_difficulty)
       in
+      (* Printf.printf "[ DBG] Inserted block %s at height %Lu\n" (Utils.hex_string_of_hash_string hash) (Int64.add previous_block_height 1L); *)
       InsertedIntoBlockchain record_id
 ;;
 let insert_block_as_orphan hash previous_block_hash log_difficulty db =

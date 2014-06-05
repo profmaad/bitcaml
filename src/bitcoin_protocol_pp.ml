@@ -128,7 +128,7 @@ let print_block_locator_list_message m =
   Printf.printf "\tBlock protocol version: %d\n" m.block_protocol_version;
   Printf.printf "\tBlock Locator (%d entries):\n" (List.length m.block_locator_hashes);
   print_block_locator 1 m.block_locator_hashes;
-  Printf.printf "\tLast desired Block: %s\n" (if m.block_locator_hash_stop = (String.make 32 '\x00') then "None" else Utils.hex_string_of_hash_string m.block_locator_hash_stop)
+  Printf.printf "\tLast desired Block: %s\n" (if m.block_locator_hash_stop = Utils.zero_hash then "None" else Utils.hex_string_of_hash_string m.block_locator_hash_stop)
 ;;
 let print_block_locator_list_message_with_header m message_type =
   Printf.printf "Bitcoin %s Message:\n" message_type;

@@ -6,6 +6,14 @@ let map_string f s =
   in
   map_string_ f s 0 (String.length s)
 ;;
+let reverse_string s =
+  let rec reverse_string_acc s acc index length =
+    if index >= length
+    then acc
+    else reverse_string_acc s ((String.make 1 s.[index]) ^ acc) (index+1) length
+  in
+  reverse_string_acc s "" 0 (String.length s)
+;;
 
 let print_hex_string s line_length =
   let hex_iterator index c =
@@ -24,17 +32,14 @@ let print_indented_hex_string s line_length indent_level =
 ;;
 let hex_string_of_hash_string s =
   let hex_mapper c = Printf.sprintf "%02x" (int_of_char c) in
+  String.concat "" (map_string hex_mapper (reverse_string s))
+;;
+let hex_string_of_hash_string_noreverse s =
+  let hex_mapper c = Printf.sprintf "%02x" (int_of_char c) in
   String.concat "" (map_string hex_mapper s)
 ;;
+let zero_hash = String.make 32 '\x00';;
 
-let reverse_string s =
-  let rec reverse_string_acc s acc index length =
-    if index >= length
-    then acc
-    else reverse_string_acc s ((String.make 1 s.[index]) ^ acc) (index+1) length
-  in
-  reverse_string_acc s "" 0 (String.length s)
-;;
 let reverse_hash_string s =
   let rec blit_reverse_hash_string src dst length byte_index =
     if byte_index*2 < length then (
@@ -68,7 +73,7 @@ let le_bytestring_of_int64 i bytesize =
   reverse_string (bytestring_of_int64 i bytesize)
 ;;
 
-
+let unix_tm_of_now () = Unix.localtime (Unix.time ());;
 let unix_tm_of_int32 timestamp = 
   Unix.localtime (Int32.to_float timestamp)
 ;;

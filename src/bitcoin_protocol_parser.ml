@@ -482,10 +482,15 @@ let parse_payload protocol_version payload_bitstring = function
   | _ -> Some (UnknownPayload payload_bitstring)
 ;;
 
-let read_string_from_fd fd bytes =
+exception Connection_closed;;
+
+let rec read_string_from_fd fd bytes =
   let received_string = String.make bytes '\x00' in
-  let bytes_read = Unix.read fd received_string 0 bytes in
-  String.sub received_string 0 bytes_read
+  match Unix.read fd received_string 0 bytes with
+  | 0 when (bytes > 0) -> raise Connection_closed
+  | bytes_read when (bytes_read < bytes) ->
+    String.sub received_string 0 bytes_read ^ (read_string_from_fd fd (bytes - bytes_read))
+  | bytes_read -> String.sub received_string 0 bytes_read
 ;;
 
 let parse_header_from_fd fd =
