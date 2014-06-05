@@ -136,13 +136,19 @@ type transaction =
     transaction_lock_time : transaction_lock_time;
   };;
 
+type difficulty_bits =
+  {
+    bits_base : int;
+    bits_exponent : int;
+  }
+
 type block_header =
   {
     block_version : int;
     previous_block_hash : string;
     merkle_root : string;
     block_timestamp : Unix.tm;
-    block_difficulty_target : int;
+    block_difficulty_target : difficulty_bits;
     block_nonce : int32;
   };;
 type protocol_block_header =
@@ -211,11 +217,6 @@ type message =
     network : magic;
     payload : message_payload;
   };;
-
-let message_checksum payload =
-  let digest = Bitcoin_crypto.double_sha256 payload in
-  String.sub digest 0 4
-;;
 
 let magic_of_int32 = function
   | 0xD9B4BEF9l -> MainNetwork
@@ -354,4 +355,17 @@ let int_of_rejection_reason = function
   | RejectionInsufficientFee -> 0x42
   | RejectionCheckpoint -> 0x43
   | RejectionUnknown i -> i
+;;
+
+let difficulty_bits_of_int32 i =
+  let exponent = Int32.shift_right_logical (Int32.logand i 0xff000000l) 24 in
+  let base = Int32.logand i 0x00ffffffl in
+  {
+    bits_base = Int32.to_int base;
+    bits_exponent = Int32.to_int exponent;
+  }
+;;
+let int32_of_difficulty_bits bits =
+  let exponent = Int32.shift_left (Int32.of_int bits.bits_exponent) 24 in
+  Int32.logor exponent (Int32.of_int bits.bits_base)
 ;;

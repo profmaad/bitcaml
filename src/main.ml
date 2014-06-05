@@ -39,6 +39,22 @@ let debug peer = { peer with Bitcoin.Peer.peer_debug = true };;
 let () =
   Random.self_init ();
 
+  print_string "Sanity testing genesis block against its own hash...\t";
+  let calculated_genesis_hash = Bitcoin.Blockchain.block_hash Config.testnet3_genesis_block_header in
+  if calculated_genesis_hash = Config.testnet3_genesis_block_hash then
+    print_endline "PASSED"
+  else (
+    Printf.printf"FAILED: %s != %s\n" calculated_genesis_hash Config.testnet3_genesis_block_hash;
+    exit 1;
+  );
+
+  print_string "Testing difficulty calculation...\t";
+  let difficulty_test_results = [
+    Bitcoin.Blockchain.log_difficulty_of_difficulty_bits { Bitcoin.Protocol.bits_base = 0x00ffff; bits_exponent = 0x1d; };
+    Bitcoin.Blockchain.log_difficulty_of_difficulty_bits { Bitcoin.Protocol.bits_base = 0x0404cb; bits_exponent = 0x1b; };
+  ] in
+  print_endline (String.concat ", " (List.map (Printf.sprintf "%f") difficulty_test_results));
+
   Printf.printf "Opening and initializing blockchain db at %s...\t" Config.testnet3_blockchain_db;
   let db = Bitcoin.Blockchain.open_db Config.testnet3_blockchain_db in
   print_endline "DONE";

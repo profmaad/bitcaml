@@ -359,7 +359,7 @@ let parse_block_header bits =
       previous_block_hash = previous_block_hash;
       merkle_root = merkle_root;
       block_timestamp = (Utils.unix_tm_of_int32 timestamp);
-      block_difficulty_target = Int32.to_int difficulty_target;
+      block_difficulty_target = difficulty_bits_of_int32 difficulty_target;
       block_nonce = nonce;
     }, rest)
   | { _ } -> (None, bits)
@@ -497,7 +497,7 @@ let read_payload_from_fd fd header =
   read_string_from_fd fd header.payload_length
 ;;
 let verify_message_checksum header payload_string  =
-  let payload_checksum = message_checksum payload_string in
+  let payload_checksum = Bitcoin_crypto.message_checksum payload_string in
   header.checksum = payload_checksum
 ;;
 

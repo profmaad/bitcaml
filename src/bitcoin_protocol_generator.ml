@@ -143,7 +143,7 @@ let bitstring_of_block_header header =
     header.previous_block_hash : 32*8 : string;
     header.merkle_root : 32*8 : string;
     Utils.int32_of_unix_tm header.block_timestamp : 4*8 : littleendian;
-    Int32.of_int header.block_difficulty_target : 4*8 : littleendian;
+    int32_of_difficulty_bits header.block_difficulty_target : 4*8 : littleendian;
     header.block_nonce : 4*8 : littleendian
   }
 ;;
@@ -216,7 +216,7 @@ let bitstring_of_message m =
     magic = m.network;
     command = command_of_message_payload m.payload;
     payload_length = (bitstring_length payload_bitstring) / 8;
-    checksum = message_checksum (string_of_bitstring payload_bitstring);
+    checksum = Bitcoin_crypto.message_checksum (string_of_bitstring payload_bitstring);
   } in
   let header_bitstring = bitstring_of_header header in
   BITSTRING {

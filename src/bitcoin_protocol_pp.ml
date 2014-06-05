@@ -179,12 +179,16 @@ let print_tx_message m =
   print_transaction m
 ;;
 
+let pp_string_of_difficulty_bits bits =
+  Printf.sprintf "base = %x, exponent = %x" bits.bits_base bits.bits_exponent
+;;
+
 let print_block_header header =
   Printf.printf "\tBlock Version: %u\n" header.block_version;
   Printf.printf "\tPrevious Block: %s\n" (Utils.hex_string_of_hash_string header.previous_block_hash);
   Printf.printf "\tMerkle Tree Root: %s\n" (Utils.hex_string_of_hash_string header.merkle_root);
   Printf.printf "\tCreated at: %s\n" (Utils.string_of_unix_tm header.block_timestamp);
-  Printf.printf "\tDifficulty: %u\n" header.block_difficulty_target;
+  Printf.printf "\tDifficulty: %s\n" (pp_string_of_difficulty_bits header.block_difficulty_target);
   Printf.printf "\tNonce: 0x%04lu\n" header.block_nonce;
 ;;
 let print_protocol_block_header header =

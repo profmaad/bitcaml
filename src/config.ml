@@ -19,7 +19,7 @@ let testnet3_genesis_block_header = {
   previous_block_hash = String.make 32 '\x00';
   merkle_root = Utils.reverse_string "\x4a\x5e\x1e\x4b\xaa\xb8\x9f\x3a\x32\x51\x8a\x88\xc3\x1b\xc8\x7f\x61\x8f\x76\x67\x3e\x2c\xc7\x7a\xb2\x12\x7b\x7a\xfd\xed\xa3\x3b";
   block_timestamp = Utils.unix_tm_of_int32 1296688602l;
-  block_difficulty_target = 486604799;
+  block_difficulty_target = Bitcoin_protocol.difficulty_bits_of_int32 0x1d00ffffl;
   block_nonce = 414098458l;
 }
 
