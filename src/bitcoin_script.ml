@@ -1,3 +1,5 @@
+exception Malformed_script;;
+
 type data_item = string;;
 
 type word =

@@ -31,6 +31,9 @@ module Script = struct
   module Parser = struct
     include Bitcoin_script_parser;;
   end
+  module Generator = struct
+    include Bitcoin_script_generator;;
+  end
 
   module PP = struct
     include Bitcoin_script_pp;;

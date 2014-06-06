@@ -1,8 +1,6 @@
 open Bitstring;;
 open Bitcoin_script;;
 
-exception Malformed_script;;
-
 let parse_int bytes bits =
   bitmatch bits with
   | { i : bytes * 8 : littleendian;

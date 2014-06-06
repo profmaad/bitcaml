@@ -61,6 +61,15 @@ let () =
   Bitcoin.Script.PP.print_script parsed_script;
   print_endline "DONE";
 
+  print_string "Sanity testing script generator against parser...\t"
+  let test_script = "\x76\xa9\x14\x2f\xef\x8e\xdc\xc4\x50\x19\xac\xba\x3b\xb1\x46\xb7\x6c\xbd\x2f\x84\x8b\xe5\xd6\x88\xac" in
+  let parsed_script = Bitcoin.Script.Parser.parse_script (Bitstring.bitstring_of_string test_script) in
+  let generated_script = Bitstring.string_of_bitstring (Bitcoin.Script.Generator.bitstring_of_script parsed_script) in
+  if test_script = generated_script then print_endline "PASSED"
+  else
+    Printf.printf "FAILED:\nExpected: %s\nActual  : %s\n" (Utils.hex_string_of_string test_script) (Utils.hex_string_of_string generated_script)
+  ;
+
   Printf.printf "Opening and initializing blockchain db at %s...\t" Config.testnet3_blockchain_db;
   let blockchain_db = Bitcoin.Blockchain.open_db Config.testnet3_blockchain_db in
   print_endline "DONE";
