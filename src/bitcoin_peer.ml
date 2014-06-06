@@ -152,7 +152,8 @@ let construct_block_locator_list_message peer hash_stop =
 	  (select_block_hashes next_step_size (Int64.sub height next_step_size) (Int64.add count 1L) blockchain)
   in
   let mainchain_height = Bitcoin_blockchain.mainchain_height peer.blockchain in
-  debug_may peer (fun () -> Printf.printf "[INFO] current mainchain height: %Lu\n" mainchain_height);
+  (* debug_may peer (fun () -> Printf.printf "[INFO] current mainchain height: %Lu\n" mainchain_height); *)
+  Printf.printf "[INFO] current mainchain height: %Lu\n" mainchain_height; flush stdout;
   let block_locator_hashes = select_block_hashes 1L mainchain_height 0L peer.blockchain in
   {
     block_protocol_version = peer.peer_version.protocol_version;
@@ -278,7 +279,7 @@ let rec message_loop peer =
     | Some m ->
       debug_may peer (fun () -> Printf.printf "[INFO] invalid message (wrong network magic) received from peer: %s\n" (Bitcoin_protocol_pp.pp_string_of_magic m.network));
   );
-  print_newline (); (* force flush of stdout *)
+  (* print_newline (); (\* force flush of stdout *\) *)
   (* print_string "Continue? "; flush stdout; ignore (input_line stdin); *)
   message_loop peer
 ;;

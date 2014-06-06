@@ -55,6 +55,12 @@ let () =
   ] in
   print_endline (String.concat ", " (List.map (Printf.sprintf "%f") difficulty_test_results));
 
+  print_endline "Testing script parser and pretty printer...";
+  let test_script = "\x76\xa9\x14\x2f\xef\x8e\xdc\xc4\x50\x19\xac\xba\x3b\xb1\x46\xb7\x6c\xbd\x2f\x84\x8b\xe5\xd6\x88\xac" in
+  let parsed_script = Bitcoin.Script.Parser.parse_script (Bitstring.bitstring_of_string test_script) in
+  Bitcoin.Script.PP.print_script parsed_script;
+  print_endline "DONE";
+
   Printf.printf "Opening and initializing blockchain db at %s...\t" Config.testnet3_blockchain_db;
   let blockchain_db = Bitcoin.Blockchain.open_db Config.testnet3_blockchain_db in
   print_endline "DONE";
@@ -68,7 +74,7 @@ let () =
     local_version = local_version ();
     peer_version = Bitcoin.Peer.default_version;
     peer_socket = peer_socket;
-    peer_debug = true;
+    peer_debug = false;
     blockchain = blockchain_db;
   } in
 

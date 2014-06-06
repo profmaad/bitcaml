@@ -24,3 +24,15 @@ end
 module Blockchain = struct
   include Bitcoin_blockchain;;
 end
+
+module Script = struct
+  include Bitcoin_script;;
+
+  module Parser = struct
+    include Bitcoin_script_parser;;
+  end
+
+  module PP = struct
+    include Bitcoin_script_pp;;
+  end
+end
