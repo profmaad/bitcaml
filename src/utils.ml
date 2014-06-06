@@ -30,6 +30,11 @@ let print_indented_hex_string s line_length indent_level =
   print_string (String.make indent_level '\t');
   String.iteri hex_iterator s
 ;;
+
+let hex_string_of_string s =
+  let hex_mapper c = Printf.sprintf "%02x " (int_of_char c) in
+  String.concat "" (map_string hex_mapper s)
+;;
 let hex_string_of_hash_string s =
   let hex_mapper c = Printf.sprintf "%02x" (int_of_char c) in
   String.concat "" (map_string hex_mapper (reverse_string s))
