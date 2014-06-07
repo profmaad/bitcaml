@@ -1,7 +1,6 @@
 open Bitstring;;
 open Bitcoin_script;;
 
-let data_item_length = String.length;;
 let bitstring_of_data_item = bitstring_of_string;;
 
 let bitstring_of_data_word opcode data_item = 

@@ -291,15 +291,78 @@ let word_of_opcode = function
   | opcode -> InvalidOpcode opcode
 ;;
 
+let data_item_length = String.length;;
+let data_item_compare = String.compare;;
+let data_items_equal d1 d2 = (data_item_compare d1 d2 = 0);;
+let data_item_byte byte item =
+  let index = if byte < 0 then (data_item_length item) + byte else byte in
+  Char.code item.[index]
+;;
+let data_item_set_byte byte value item =
+  let index = if byte < 0 then (data_item_length item) + byte else byte in
+  item.[index] <- (Char.chr value)
+;;
+
 let int64_of_data_item item =
-  match String.length item with
+  let rec process_byte acc byte s =
+    if byte > (data_item_length s) then acc
+    else
+      let shifted_byte = Int64.shift_left (Int64.of_int (data_item_byte byte s)) (byte * 8) in
+      let new_acc = Int64.logor shifted_byte acc in
+      process_byte new_acc (byte + 1) s
+  in
+  match data_item_length item with
   | 0 -> Some 0L
-  | i when (i != 1 && i != 3 && i != 5 && i != 9) -> None
-  | _ ->
-    match Bitcoin_protocol_parser.parse_varint (Bitstring.bitstring_of_string item) with
-    | None, _ -> None
-    | Some int64_value, _ ->
-      let magnitude = Int64.logand 0x7fffffffffffffffL int64_value in
-      let negative = (Int64.logand 0x8000000000000000L int64_value) != 0L in
-      Some (if negative then Int64.neg magnitude else magnitude)
+  | i when (i > 4) -> None
+  | _ -> 
+    let raw_value = process_byte 0x00L 0 item in
+    (* MSB >= 0x80 means negative sign *)
+    if ((data_item_byte (-1) item) land 0x80) > 0 then
+      let magnitude = Int64.logand (Int64.shift_left 0x80L (8 * ((data_item_length item) -1 ))) raw_value in
+      Some (Int64.neg magnitude)
+    else
+      Some raw_value
+;;
+let data_item_of_int64 i =
+  let rec bytes_of_int64 i =
+    if i >= 0L then
+      let byte = Int64.to_int (Int64.logand 0xffL i) in
+      let shifted_i = Int64.shift_right_logical i 8 in
+      let byte_string = String.make 1 (Char.chr byte) in
+      byte_string ^ (bytes_of_int64 shifted_i)
+    else ""
+  in
+  (* first we must transform the bits of i into sign-magnitude representation *)
+  let magnitude = Int64.abs i in
+  let negative = (i < 0L) in
+  let bytes = bytes_of_int64 magnitude in
+  if ((data_item_byte 0 bytes) land 0x80) > 0 then
+    Utils.reverse_string ((String.make 1 (if negative then '\x80' else '\x00')) ^ bytes)
+  else (
+    if negative then (
+      let first_byte = data_item_byte 0 bytes in
+      let signed_byte = first_byte lor 0x80 in
+      data_item_set_byte 0 signed_byte bytes;
+      Utils.reverse_string bytes
+    ) else
+      Utils.reverse_string bytes
+  )
+;;
+
+let bool_of_data_item item =
+  let char_is_zero c = (c = '\x00') in
+  let zero_bytes = Utils.map_string char_is_zero item in
+  let all_zero = List.fold_left ( && ) true zero_bytes in
+  if all_zero then false
+  else (
+    let zero_bytes_rev = List.rev zero_bytes in
+    if (List.fold_left ( && ) true (List.tl zero_bytes_rev)) && ((data_item_byte (-1) item) = 0x80) then
+      false
+    else
+      true
+  )
+;;
+let data_item_of_bool = function
+  | false -> ""
+  | true -> "\x01"
 ;;

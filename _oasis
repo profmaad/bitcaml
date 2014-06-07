@@ -19,4 +19,5 @@ Executable "bitcaml"
     bitstring.syntax,
     sha,
     sqlexpr,
-    sqlexpr.syntax
+    sqlexpr.syntax,
+    cryptokit

@@ -38,4 +38,8 @@ module Script = struct
   module PP = struct
     include Bitcoin_script_pp;;
   end
+
+  module Interpreter = struct
+    include Bitcoin_script_interpreter;;
+  end
 end
