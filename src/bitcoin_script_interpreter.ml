@@ -1,3 +1,4 @@
+open Bitcoin_protocol;;
 open Bitcoin_script;;
 
 exception Disabled_opcode;;
@@ -12,6 +13,51 @@ type stack = data_item Stack.t;;
 type result =
 | Result of data_item
 | Invalid
+
+type hash_type =
+| SigHashAllZero (* bug backwards compatibility *)
+| SigHashAll
+| SigHashNone
+| SigHashSingle
+| UnknownHashType of int
+;;
+type hash_type_flags =
+| SigHashAnyoneCanPay
+
+let hash_type_of_int i =
+  match (i land 0x0f) with
+  | 0x00 -> SigHashAllZero
+  | 0x01 -> SigHashAll
+  | 0x02 -> SigHashNone
+  | 0x03 -> SigHashSingle
+  | _ -> UnknownHashType i
+;;
+let int_of_hash_type = function
+  | SigHashAllZero -> 0x00
+  | SigHashAll -> 0x01
+  | SigHashNone -> 0x02
+  | SigHashSingle -> 0x03
+  | UnknownHashType i -> i
+;;
+
+let hash_type_flags_of_int i =
+  let flags = ref [] in
+  if (i land 0x80) > 0 then flags := SigHashAnyoneCanPay :: !flags;
+  !flags
+;;
+let int_of_hash_type_flags flags =
+  let int_of_hash_type_flag = function
+    | SigHashAnyoneCanPay -> 0x80
+  in
+  List.fold_left ( lor ) 0x00 (List.map int_of_hash_type_flag flags)
+;;
+
+let hash_type_and_flags_of_int i =
+  (hash_type_of_int i, hash_type_flags_of_int i)
+;;
+let int_of_hash_type_and_flags hash_type flags =
+  (int_of_hash_type hash_type) lor (int_of_hash_type_flags flags)
+;;
 
 let create_stack () =
   let (stack : stack) = Stack.create () in
@@ -184,14 +230,116 @@ let hash f stack =
   push (f (pop stack)) stack
 ;;
 
-let op_checksig stack =
-  ()
+let checksig_copy_tx tx input_index subscript =
+  let set_scripts index txin =
+    if index = input_index then
+      { txin with signature_script = subscript }
+    else
+      { txin with signature_script = "" }
+  in
+  let modified_inputs = List.mapi set_scripts tx.transaction_inputs in
+  { tx with transaction_inputs = modified_inputs }
+;;
+let zero_input_sequence_numbers inputs input_index =
+  let set_sequence_numbers index txin =
+    if index = input_index then txin
+    else
+      { txin with transaction_sequence_number = 0x0000l }
+  in
+  List.mapi set_sequence_numbers inputs
+;;
+let checksig_copy_tx_sighashnone tx input_index =
+  let modified_inputs = zero_input_sequence_numbers tx.transaction_inputs input_index in
+  { tx with
+    transaction_inputs = modified_inputs;
+    transaction_outputs = [];
+  }
+;;
+let checksig_copy_tx_sighashsingle tx input_index =
+  let modify_outputs index txout =
+    if index = input_index then txout
+    else
+      {
+	transaction_output_value = Int64.minus_one;
+	output_script = "";
+      }
+  in
+  let remaining_outputs, _ = Utils.split_list tx.transaction_outputs (input_index + 1) in
+  let modified_outputs = List.mapi modify_outputs remaining_outputs in
+  let modified_inputs = zero_input_sequence_numbers tx.transaction_inputs input_index in
+  { tx with
+    transaction_inputs = modified_inputs;
+    transaction_outputs = modified_outputs;
+  }
+;;
+let checksig_copy_tx_sighashanyonecanpay tx input_index =
+  let input = List.nth tx.transaction_inputs input_index in
+  { tx with
+    transaction_inputs = [input];
+  }
+;;
+
+let one_hash = (String.make 31 '\x00') ^ "\x01";;
+
+let checksig_check_for_one_hash tx input_index subscript hash_type flags =
+  (input_index > (List.length tx.transaction_inputs)) ||
+    (* bug backwards compatibiliy *)
+    ((hash_type = SigHashSingle) && input_index > (List.length tx.transaction_outputs))
+;;
+
+let checksig_hash_transaction tx input_index subscript hash_type_byte hash_type flags =
+  let txcopy = checksig_copy_tx tx input_index (Bitstring.string_of_bitstring (Bitcoin_script_generator.bitstring_of_script subscript)) in
+
+  (* done with basic steps *)
+  let txcopy = match hash_type with
+    | SigHashAll | SigHashAllZero -> txcopy
+    | SigHashNone -> checksig_copy_tx_sighashnone txcopy input_index
+    | SigHashSingle -> checksig_copy_tx_sighashsingle txcopy input_index
+    | UnknownHashType _ -> raise Result_invalid
+  in
+  let txcopy = if List.mem SigHashAnyoneCanPay flags then
+      checksig_copy_tx_sighashanyonecanpay txcopy input_index
+    else
+      txcopy
+  in
+
+  let tx_bitstring = Bitcoin_protocol_generator.bitstring_of_transaction txcopy in
+  (* quick-n-dirty one byte to 4 byte little endian... *)
+  let hash_type_string = (String.make 1 (Char.chr hash_type_byte)) ^ (String.make 3 '\x00') in
+  let tx_string = Bitstring.string_of_bitstring tx_bitstring ^ hash_type_string in
+
+  Bitcoin_crypto.hash256 tx_string
+;;
+
+let op_checksig stack (tx, input_index) script_after_codesep =
+  let subscript_filter signature = function
+    | CodeSeparator -> false
+    | Data (_, signature) -> false
+    | _ -> true
+  in
+
+  let pubkey = pop stack in
+  let complete_signature = pop stack in
+
+  let subscript = List.filter (subscript_filter complete_signature) script_after_codesep in
+
+  let hash_type_byte = data_item_byte (-1) complete_signature in
+  let hash_type, flags = hash_type_and_flags_of_int hash_type_byte in
+  let signature = String.sub complete_signature 0 ((String.length complete_signature) - 1) in
+
+  let hash = if checksig_check_for_one_hash tx input_index subscript hash_type flags then
+      one_hash
+    else
+      checksig_hash_transaction tx input_index subscript hash_type_byte hash_type flags
+  in
+
+  push (data_item_of_bool false) stack
 ;;
 let op_checkmultisig stack =
   ()
 ;;
 
-let execute_word stack altstack = function
+let execute_word stack altstack tx_data script_data = function
   | Data (opcode, data_item) -> push data_item stack
   | Nop (opcode) -> ()
   | If -> raise Not_implemented
@@ -268,8 +416,8 @@ let execute_word stack altstack = function
   | Hash160 -> hash Bitcoin_crypto.hash160 stack
   | Hash256 -> hash Bitcoin_crypto.hash256 stack
   | CodeSeparator -> ()
-  | CheckSig -> raise Not_implemented
-  | CheckSigVerify -> raise Not_implemented
+  | CheckSig -> op_checksig stack tx_data script_data
+  | CheckSigVerify -> op_checksig stack tx_data script_data; op_verify stack
   | CheckMultiSig -> raise Not_implemented
   | CheckMultiSigVerify -> raise Not_implemented
 (* Pseudo-words *)
@@ -285,15 +433,17 @@ let execute_word stack altstack = function
   | Reserved2 -> raise Result_invalid
 ;;
 
-let execute_script script =
-  let rec execute_script_ stack altstack = function
+let execute_script script tx_data =
+  let rec execute_script_ stack altstack tx_data script_after_codesep = function
     | [] -> (stack, altstack)
+    | CodeSeparator :: ws ->
+      execute_script_ stack altstack tx_data ws ws
     | word :: ws ->
-      execute_word stack altstack word;
-      execute_script_ stack altstack ws
+      execute_word stack altstack tx_data script_after_codesep word;
+      execute_script_ stack altstack tx_data (script_after_codesep @ (word :: ws)) ws
   in
   try
-    let stack, altstack = execute_script_ (create_stack ()) (create_stack ()) script in
+    let stack, altstack = execute_script_ (create_stack ()) (create_stack ()) tx_data [] script in
     Result (pop stack)
   with
   | Disabled_opcode -> Invalid

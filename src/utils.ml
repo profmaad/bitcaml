@@ -117,12 +117,23 @@ let int_of_bool = function
   | true -> 1
 ;;
 
+let remove_nth list position =
+  let rec remove_nth_ list position acc =
+    match list, position with
+    | [], _ -> List.rev acc
+    | x :: xs, 0 -> (List.rev acc) @ xs
+    | x :: xs, p -> remove_nth_ xs (position - 1) (x :: acc)
+  in
+  remove_nth_ list position []
+;;
 
-
-
-
-
-
-
-
-
+let split_list list length =
+  let rec split_list_ list length acc =
+    match list, length with
+    | [], _ -> (acc, [])
+    | xs, 0 -> (acc, xs)
+    | x :: xs, l -> split_list_ xs (l - 1) (x :: acc)
+  in
+  let first, second = split_list_ list length [] in
+  (List.rev first, second)
+;;
