@@ -126,7 +126,6 @@ let () =
     if Bitcoin_script.bool_of_data_item item then print_endline "PASSED" else print_endline "FAILED"
   | Bitcoin.Script.Interpreter.Invalid -> print_endline "Script result: INVALID"; print_endline "FAILED"
   );
-  ignore (exit 0);
 
   Printf.printf "Opening and initializing blockchain db at %s...\t" Config.testnet3_blockchain_db;
   let blockchain_db = Bitcoin.Blockchain.open_db Config.testnet3_blockchain_db in
