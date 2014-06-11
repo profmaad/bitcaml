@@ -2,7 +2,8 @@ open Bitstring;;
 
 let ensure_string_length s length =
   if (String.length s) > length then
-    String.sub s 0 length
+    let start = (String.length s) - length in
+    String.sub s start length
   else
     String.make (length - (String.length s)) '\x00' ^ s
 ;;
