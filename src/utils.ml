@@ -46,7 +46,9 @@ let hex_string_of_hash_string_noreverse s =
 let zero_hash = String.make 32 '\x00';;
 
 let hex_encode s = Cryptokit.transform_string (Cryptokit.Hexa.encode ()) s;;
+let hex_encode_rev s = reverse_string (hex_encode s);;
 let hex_decode s = Cryptokit.transform_string (Cryptokit.Hexa.decode ()) s;;
+let hex_decode_rev s = reverse_string (hex_decode s);;
 
 let reverse_hash_string s =
   let rec blit_reverse_hash_string src dst length byte_index =
