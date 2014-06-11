@@ -15,6 +15,10 @@ end
 
 module Crypto = struct
   include Bitcoin_crypto;;
+
+  module ECDSA = struct
+    include Bitcoin_crypto_ecdsa;;
+  end
 end
 
 module Peer = struct

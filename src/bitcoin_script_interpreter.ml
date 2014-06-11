@@ -333,7 +333,9 @@ let op_checksig stack (tx, input_index) script_after_codesep =
       checksig_hash_transaction tx input_index subscript hash_type_byte hash_type flags
   in
 
-  push (data_item_of_bool false) stack
+  let verification_result = Bitcoin_crypto_ecdsa.verify_der_signature pubkey hash signature in
+
+  push (data_item_of_bool verification_result) stack
 ;;
 let op_checkmultisig stack =
   ()
