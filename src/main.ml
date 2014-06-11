@@ -73,45 +73,45 @@ let () =
   ;
 
   print_endline "Testing script engine...";
-  (* let block_new, _ = Bitcoin.Protocol.Parser.parse_block (Bitstring.bitstring_of_file "/tmp/block_new.dat") in *)
-  (* let block_new = Option.get block_new in *)
-  (* let tx_new = List.nth block_new.Bitcoin.Protocol.block_transactions 1 in *)
-  (* Bitcoin.Protocol.PP.print_transaction tx_new; print_newline (); *)
-  (* let block_old, _ = Bitcoin.Protocol.Parser.parse_block (Bitstring.bitstring_of_file "/tmp/block_old.dat") in *)
-  (* let block_old = Option.get block_old in *)
-  (* let tx_old = List.nth block_old.Bitcoin.Protocol.block_transactions 4 in *)
-  (* Bitcoin.Protocol.PP.print_transaction tx_old; print_newline (); *)
+  let block_new, _ = Bitcoin.Protocol.Parser.parse_block (Bitstring.bitstring_of_file "/tmp/block_new.dat") in
+  let block_new = Option.get block_new in
+  let tx_new = List.nth block_new.Bitcoin.Protocol.block_transactions 1 in
+  Bitcoin.Protocol.PP.print_transaction tx_new; print_newline ();
+  let block_old, _ = Bitcoin.Protocol.Parser.parse_block (Bitstring.bitstring_of_file "/tmp/block_old.dat") in
+  let block_old = Option.get block_old in
+  let tx_old = List.nth block_old.Bitcoin.Protocol.block_transactions 4 in
+  Bitcoin.Protocol.PP.print_transaction tx_old; print_newline ();
 
-  let tx_new = {
-    transaction_data_format_version = 1;
-    transaction_inputs = [
-      {
-	previous_transaction_output = {
-	  referenced_transaction_hash = Utils.hex_decode_rev "0437cd7f8525ceed2324359c2d0ba26006d92d856a9c20fa0241106ee5a597c9";
-	  transaction_output_index = 0l;
-	};
-	signature_script = "\071" ^ Utils.hex_decode "304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901";
-	transaction_sequence_number = 0xffffffffl;
-      }
-    ];
-    transaction_outputs = [
-      {
-	transaction_output_value = 1000000000L;
-	output_script = Utils.hex_decode "4104ae1a62fe09c5f51b13905f07f06b99a2f7159b2225f374cd378d71302fa28414e7aab37397f554a7df5f142c21c1b7303b8a0626f1baded5c72a704f7e6cd84cac";
-      };
-      {
-	transaction_output_value = 4000000000L;
-	output_script = Utils.hex_decode "410411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3ac";
-      }
-    ];
-    transaction_lock_time = AlwaysLockedTransaction;
-  } in
+  (* let tx_new = { *)
+  (*   transaction_data_format_version = 1; *)
+  (*   transaction_inputs = [ *)
+  (*     { *)
+  (* 	previous_transaction_output = { *)
+  (* 	  referenced_transaction_hash = Utils.hex_decode_rev "0437cd7f8525ceed2324359c2d0ba26006d92d856a9c20fa0241106ee5a597c9"; *)
+  (* 	  transaction_output_index = 0l; *)
+  (* 	}; *)
+  (* 	signature_script = "\071" ^ Utils.hex_decode "304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901"; *)
+  (* 	transaction_sequence_number = 0xffffffffl; *)
+  (*     } *)
+  (*   ]; *)
+  (*   transaction_outputs = [ *)
+  (*     { *)
+  (* 	transaction_output_value = 1000000000L; *)
+  (* 	output_script = Utils.hex_decode "4104ae1a62fe09c5f51b13905f07f06b99a2f7159b2225f374cd378d71302fa28414e7aab37397f554a7df5f142c21c1b7303b8a0626f1baded5c72a704f7e6cd84cac"; *)
+  (*     }; *)
+  (*     { *)
+  (* 	transaction_output_value = 4000000000L; *)
+  (* 	output_script = Utils.hex_decode "410411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3ac"; *)
+  (*     } *)
+  (*   ]; *)
+  (*   transaction_lock_time = AlwaysLockedTransaction; *)
+  (* } in *)
 
   let pubkey_script = (List.hd tx_new.Bitcoin.Protocol.transaction_inputs).Bitcoin.Protocol.signature_script in
   let pubkey_script_asm = Bitcoin.Script.Parser.parse_script (Bitstring.bitstring_of_string pubkey_script) in
 
-  (* let output_script = (List.nth tx_old.Bitcoin.Protocol.transaction_outputs 1).Bitcoin.Protocol.output_script in *)
-  let output_script = Utils.hex_decode "410411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3ac" in
+  let output_script = (List.nth tx_old.Bitcoin.Protocol.transaction_outputs 1).Bitcoin.Protocol.output_script in
+  (* let output_script = Utils.hex_decode "410411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3ac" in *)
   let output_script_asm = Bitcoin.Script.Parser.parse_script (Bitstring.bitstring_of_string output_script) in
 
   let asm = pubkey_script_asm @ [Bitcoin.Script.CodeSeparator] @ output_script_asm in
