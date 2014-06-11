@@ -305,7 +305,7 @@ let data_item_set_byte byte value item =
 
 let int64_of_data_item item =
   let rec process_byte acc byte s =
-    if byte > (data_item_length s) then acc
+    if byte >= (data_item_length s) then acc
     else
       let shifted_byte = Int64.shift_left (Int64.of_int (data_item_byte byte s)) (byte * 8) in
       let new_acc = Int64.logor shifted_byte acc in
