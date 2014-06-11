@@ -451,10 +451,12 @@ let execute_script script tx_data =
       execute_script_ stack altstack tx_data ws ws
     | word :: ws ->
       execute_word stack altstack tx_data script_after_codesep word;
-      execute_script_ stack altstack tx_data (script_after_codesep @ (word :: ws)) ws
+      dump_stack stack;
+      print_endline "///////////////////////////////";
+      execute_script_ stack altstack tx_data script_after_codesep ws
   in
   try
-    let stack, altstack = execute_script_ (create_stack ()) (create_stack ()) tx_data [] script in
+    let stack, altstack = execute_script_ (create_stack ()) (create_stack ()) tx_data script script in
     Result (pop stack)
   with
   | Disabled_opcode -> Invalid
