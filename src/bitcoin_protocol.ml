@@ -115,7 +115,7 @@ type transaction_lock_time =
 type transaction_outpoint =
   {
     referenced_transaction_hash : string;
-    transaction_output_index : int;
+    transaction_output_index : int32;
   };;
 type transaction_input =
   {

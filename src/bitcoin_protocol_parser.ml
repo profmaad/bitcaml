@@ -280,7 +280,7 @@ let parse_transaction bits =
 	    } ->
 	    let input = {
 	      previous_transaction_output = { referenced_transaction_hash = outpoint_hash;
-					      transaction_output_index = Int32.to_int outpoint_index;
+					      transaction_output_index = outpoint_index;
 					    };
 	      signature_script = signature_script;
 	      transaction_sequence_number = sequence_number;

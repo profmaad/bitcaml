@@ -142,7 +142,7 @@ let pp_string_of_transaction_lock_time = function
 ;;
 
 let pp_string_of_transaction_outpoint outpoint =
-  Printf.sprintf "%s #%d" (Utils.hex_string_of_hash_string outpoint.referenced_transaction_hash) outpoint.transaction_output_index
+  Printf.sprintf "%s #%lu" (Utils.hex_string_of_hash_string outpoint.referenced_transaction_hash) outpoint.transaction_output_index
 ;;
 
 let pp_string_of_output_value value =

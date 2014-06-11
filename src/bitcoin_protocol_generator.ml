@@ -112,7 +112,7 @@ let bitstring_of_getheaders_message m = bitstring_of_block_locator_list_message 
 let bitstring_of_transaction_input input = 
   BITSTRING {
     input.previous_transaction_output.referenced_transaction_hash : 32*8 : string;
-    Int32.of_int input.previous_transaction_output.transaction_output_index : 4*8 : littleendian;
+    input.previous_transaction_output.transaction_output_index : 4*8 : littleendian;
     varstring_bitstring_of_string input.signature_script : -1 : bitstring;
     input.transaction_sequence_number : 4*8 : littleendian
   }
