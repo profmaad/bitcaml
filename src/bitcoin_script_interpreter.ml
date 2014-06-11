@@ -314,7 +314,7 @@ let checksig_hash_transaction tx input_index subscript hash_type_byte hash_type 
 let op_checksig stack (tx, input_index) script_after_codesep =
   let subscript_filter signature = function
     | CodeSeparator -> false
-    | Data (_, signature) -> false
+    | Data (_, s) when (compare s signature) = 0 -> false
     | _ -> true
   in
 
