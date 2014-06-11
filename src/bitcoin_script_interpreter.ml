@@ -435,6 +435,15 @@ let execute_word stack altstack tx_data script_data = function
   | Reserved2 -> raise Result_invalid
 ;;
 
+let dump_stack stack =
+  let index = ref 0 in
+  let print_data_item_with_index item =
+    Printf.printf "\t%d:\t%s\n" !index (Bitcoin_script_pp.pp_string_of_data_item item);
+    index := !index + 1
+  in
+  Stack.iter print_data_item_with_index stack
+;;
+
 let execute_script script tx_data =
   let rec execute_script_ stack altstack tx_data script_after_codesep = function
     | [] -> (stack, altstack)
