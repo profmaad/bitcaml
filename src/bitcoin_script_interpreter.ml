@@ -311,18 +311,7 @@ let checksig_hash_transaction tx input_index subscript hash_type_byte hash_type 
   Bitcoin_crypto.hash256 tx_string
 ;;
 
-let op_checksig stack (tx, input_index) script_after_codesep =
-  let subscript_filter signature = function
-    | CodeSeparator -> false
-    | Data (_, s) when (compare s signature) = 0 -> false
-    | _ -> true
-  in
-
-  let pubkey = pop stack in
-  let complete_signature = pop stack in
-
-  let subscript = List.filter (subscript_filter complete_signature) script_after_codesep in
-
+let check_signature public_key complete_signature (tx, input_index) subscript =
   let hash_type_byte = data_item_byte (-1) complete_signature in
   let hash_type, flags = hash_type_and_flags_of_int hash_type_byte in
   let signature = String.sub complete_signature 0 ((String.length complete_signature) - 1) in
@@ -333,12 +322,57 @@ let op_checksig stack (tx, input_index) script_after_codesep =
       checksig_hash_transaction tx input_index subscript hash_type_byte hash_type flags
   in
 
-  let verification_result = Bitcoin_crypto_ecdsa.verify_der_signature pubkey hash signature in
-
-  push (data_item_of_bool verification_result) stack
+  Bitcoin_crypto_ecdsa.verify_der_signature public_key hash signature
 ;;
-let op_checkmultisig stack =
-  ()
+
+let op_checksig stack tx_data script_after_codesep =
+  let subscript_filter signature = function
+    | CodeSeparator -> false
+    | Data (_, s) when (compare s signature) = 0 -> false
+    | _ -> true
+  in
+
+  let public_key = pop stack in
+  let complete_signature = pop stack in
+
+  let subscript = List.filter (subscript_filter complete_signature) script_after_codesep in
+
+  let result = check_signature public_key complete_signature tx_data subscript in
+
+  push (data_item_of_bool result) stack
+;;
+
+let op_checkmultisig stack tx_data script_after_codesep =
+  let subscript_filter signatures = function
+    | CodeSeparator -> false
+    | Data (_, s) when List.mem s signatures -> false
+    | _ -> true
+  in
+
+  let rec check_signatures_against_public_keys signatures public_keys tx_data subscript =
+    match signatures, public_keys with
+    | [], _ -> true
+    | _, [] -> false
+    | signature :: signatures, public_key :: public_keys ->
+      if check_signature public_key signature tx_data subscript then
+	check_signatures_against_public_keys signatures public_keys tx_data subscript
+      else
+	check_signatures_against_public_keys (signature :: signatures) public_keys tx_data subscript
+  in
+
+  match pop_int32 stack with
+  | i when (i > 20l) || (i < 0l) -> push (data_item_of_bool false) stack
+  | public_key_count ->
+    let public_keys = pop_to_list (Int32.to_int public_key_count) stack in
+    match pop_int32 stack with
+    | i when (i < 0l) || (i > public_key_count) -> push (data_item_of_bool false) stack
+    | signature_count ->
+      let signatures = pop_to_list (Int32.to_int signature_count) stack in
+      ignore(pop stack);
+
+      let subscript = List.filter (subscript_filter signatures) script_after_codesep in
+      let result = check_signatures_against_public_keys signatures public_keys tx_data subscript in
+      push (data_item_of_bool result) stack
 ;;
 
 let execute_word stack altstack tx_data script_data = function
