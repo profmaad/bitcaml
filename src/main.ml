@@ -52,8 +52,8 @@ let () =
 
   print_string "Testing difficulty calculation...\t";
   let difficulty_test_results = [
-    Bitcoin.Blockchain.log_difficulty_of_difficulty_bits { Bitcoin.Protocol.bits_base = 0x00ffff; bits_exponent = 0x1d; };
-    Bitcoin.Blockchain.log_difficulty_of_difficulty_bits { Bitcoin.Protocol.bits_base = 0x0404cb; bits_exponent = 0x1b; };
+    Bitcoin.Blockchain.DB.log_difficulty_of_difficulty_bits { Bitcoin.Protocol.bits_base = 0x00ffff; bits_exponent = 0x1d; };
+    Bitcoin.Blockchain.DB.log_difficulty_of_difficulty_bits { Bitcoin.Protocol.bits_base = 0x0404cb; bits_exponent = 0x1b; };
   ] in
   print_endline (String.concat ", " (List.map (Printf.sprintf "%f") difficulty_test_results));
 
@@ -142,7 +142,7 @@ let () =
   );
 
   Printf.printf "Opening and initializing blockchain db at %s...\t" Config.testnet3_blockchain_db;
-  let blockchain_db = Bitcoin.Blockchain.open_db Config.testnet3_blockchain_db in
+  let blockchain_db = Bitcoin.Blockchain.DB.open_db Config.testnet3_blockchain_db in
   print_endline "DONE";
 
   print_string "Establishing TCP connection to peer...\t\t";

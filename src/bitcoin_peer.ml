@@ -7,7 +7,7 @@ type peer =
     peer_version : version_message;
     peer_socket : Unix.file_descr;
     peer_debug : bool;
-    blockchain : Bitcoin_blockchain.t_db;
+    blockchain : Bitcoin_blockchain_db.t_db;
   };;
 
 let default_version =
@@ -145,13 +145,13 @@ let construct_block_locator_list_message peer hash_stop =
   let rec select_block_hashes step_size height count blockchain = 
     let next_step_size = if count >= 10L then Int64.mul step_size 2L else step_size in
     let height = if height <= 0L then 0L else height in
-    match Bitcoin_blockchain.retrieve_block_at_height height blockchain with
+    match Bitcoin_blockchain_db.retrieve_block_at_height height blockchain with
     | None -> []
     | Some (_, hash, _, _, _) ->
       hash :: if height = 0L then [] else
 	  (select_block_hashes next_step_size (Int64.sub height next_step_size) (Int64.add count 1L) blockchain)
   in
-  let mainchain_height = Bitcoin_blockchain.mainchain_height peer.blockchain in
+  let mainchain_height = Bitcoin_blockchain_db.mainchain_height peer.blockchain in
   (* debug_may peer (fun () -> Printf.printf "[INFO] current mainchain height: %Lu\n" mainchain_height); *)
   Printf.printf "[INFO] current mainchain height: %Lu\n" mainchain_height; flush stdout;
   let block_locator_hashes = select_block_hashes 1L mainchain_height 0L peer.blockchain in
@@ -221,14 +221,14 @@ let handle_block peer block =
       Printf.printf "[WARNING] block %s failed verification on rule %d\n" (Utils.hex_string_of_hash_string hash) rule;
       exit 1;
   );
-  match Bitcoin_blockchain.insert_block block.block_header peer.blockchain with
-  | Bitcoin_blockchain.InsertionFailed -> Printf.printf "[ERROR] failed to insert block %s\n" (Utils.hex_string_of_hash_string hash)
-  | Bitcoin_blockchain.NotInsertedExisted ->
+  match Bitcoin_blockchain_db.insert_block block.block_header peer.blockchain with
+  | Bitcoin_blockchain_db.InsertionFailed -> Printf.printf "[ERROR] failed to insert block %s\n" (Utils.hex_string_of_hash_string hash)
+  | Bitcoin_blockchain_db.NotInsertedExisted ->
     Printf.printf "[WARNING] tried to insert block %s, which already existed\n" (Utils.hex_string_of_hash_string hash);
-    if Bitcoin_blockchain.orphan_exists hash peer.blockchain then
+    if Bitcoin_blockchain_db.orphan_exists hash peer.blockchain then
       send_payload peer (GetBlocksPayload (construct_block_locator_list_message peer block.block_header.previous_block_hash))      
-  | Bitcoin_blockchain.InsertedIntoBlockchain id -> debug_may peer (fun () -> Printf.printf "[INFO] inserted block %s into blockchain (id: %Lu)\n" (Utils.hex_string_of_hash_string hash) id)
-  | Bitcoin_blockchain.InsertedAsOrphan id ->
+  | Bitcoin_blockchain_db.InsertedIntoBlockchain id -> debug_may peer (fun () -> Printf.printf "[INFO] inserted block %s into blockchain (id: %Lu)\n" (Utils.hex_string_of_hash_string hash) id)
+  | Bitcoin_blockchain_db.InsertedAsOrphan id ->
     debug_may peer (fun () -> Printf.printf "[INFO] inserted block %s as orphan (id: %Lu)\n" (Utils.hex_string_of_hash_string hash) id);
     send_payload peer (GetBlocksPayload (construct_block_locator_list_message peer block.block_header.previous_block_hash))
 ;;
