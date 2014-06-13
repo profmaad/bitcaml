@@ -212,8 +212,15 @@ let own_addr_payload peer =
 ;;
 
 let handle_block peer block =
-  let hash = Bitcoin_blockchain.block_hash block.block_header in
+  let hash = Bitcoin_protocol_generator.block_hash block.block_header in
   debug_may peer (fun () -> Printf.printf "[INFO] received block %s\n" (Utils.hex_string_of_hash_string hash));
+  ( try
+      Bitcoin_rules.verify_block block;
+      Printf.printf "[INFO] block %s verified successfully\n" (Utils.hex_string_of_hash_string hash);
+    with Bitcoin_rules.Rejected (rule, reason) ->
+      Printf.printf "[WARNING] block %s failed verification on rule %d\n" (Utils.hex_string_of_hash_string hash) rule;
+      exit 1;
+  );
   match Bitcoin_blockchain.insert_block block.block_header peer.blockchain with
   | Bitcoin_blockchain.InsertionFailed -> Printf.printf "[ERROR] failed to insert block %s\n" (Utils.hex_string_of_hash_string hash)
   | Bitcoin_blockchain.NotInsertedExisted ->

@@ -75,11 +75,6 @@ type insertion_result =
 | NotInsertedExisted
 ;;
 
-let block_hash header =
-  let header_bitstring = Bitcoin_protocol_generator.bitstring_of_block_header header in
-  Bitcoin_crypto.double_sha256 (Bitstring.string_of_bitstring header_bitstring)
-;;
-
 let difficulty_1_target = {
   bits_base = 0x00ffff;
   bits_exponent = 0x1d;
@@ -192,7 +187,7 @@ let rec resolve_orphans inserted_hash db =
 ;;
     
 let insert_block header db =
-  let hash = block_hash header in
+  let hash = Bitcoin_protocol_generator.block_hash header in
   let log_difficulty = log_difficulty_of_difficulty_bits header.block_difficulty_target in
   if not (block_exists hash db) then
     if not (block_exists header.previous_block_hash db) then

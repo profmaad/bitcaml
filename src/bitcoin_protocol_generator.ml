@@ -225,12 +225,9 @@ let bitstring_of_message m =
   }
 ;;
 
-
-
-
-
-
-
-
-
+(* this ought to be somewhere else, but I can't find a good spot that doesn't result in circular dependency *d'oh* *)
+let block_hash header =
+  let header_bitstring = bitstring_of_block_header header in
+  Bitcoin_crypto.double_sha256 (Bitstring.string_of_bitstring header_bitstring)
+;;
 

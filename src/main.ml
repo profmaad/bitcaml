@@ -42,7 +42,7 @@ let () =
   Random.self_init ();
 
   print_string "Sanity testing genesis block against its own hash...\t";
-  let calculated_genesis_hash = Bitcoin.Blockchain.block_hash Config.testnet3_genesis_block_header in
+  let calculated_genesis_hash = Bitcoin.Protocol.Generator.block_hash Config.testnet3_genesis_block_header in
   if calculated_genesis_hash = Config.testnet3_genesis_block_hash then
     print_endline "PASSED"
   else (
