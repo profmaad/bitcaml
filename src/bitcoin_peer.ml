@@ -215,9 +215,9 @@ let handle_block peer block =
   let hash = Bitcoin_protocol_generator.block_hash block.block_header in
   debug_may peer (fun () -> Printf.printf "[INFO] received block %s\n" (Utils.hex_string_of_hash_string hash));
   ( try
-      Bitcoin_rules.verify_block block;
+      Bitcoin_blockchain.verify_block block;
       Printf.printf "[INFO] block %s verified successfully\n" (Utils.hex_string_of_hash_string hash);
-    with Bitcoin_rules.Rejected (rule, reason) ->
+    with Bitcoin_blockchain.Rejected (rule, reason) ->
       Printf.printf "[WARNING] block %s failed verification on rule %d\n" (Utils.hex_string_of_hash_string hash) rule;
       exit 1;
   );
