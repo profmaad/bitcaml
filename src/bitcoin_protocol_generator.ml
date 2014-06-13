@@ -28,11 +28,13 @@ let varint_bitstring_of_int64 = function
 ;;
 
 let varstring_bitstring_of_string s = 
-  let length_varint_bitstring = varint_bitstring_of_int64 (Int64.of_int (String.length s)) in
-  BITSTRING {
-    length_varint_bitstring : -1 : bitstring;
-    s : (String.length s) * 8 : string
-  }
+  if (String.length s) = 0 then bitstring_of_string "\x00"
+  else
+    let length_varint_bitstring = varint_bitstring_of_int64 (Int64.of_int (String.length s)) in
+    BITSTRING {
+      length_varint_bitstring : -1 : bitstring;
+      s : (String.length s) * 8 : string
+    }
 ;;
 
 let bitstring_of_version_message m =
