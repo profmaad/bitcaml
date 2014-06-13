@@ -25,3 +25,18 @@ let message_checksum payload =
   let digest = hash256 payload in
   String.sub digest 0 4
 ;;
+
+let rec merkle_tree_hash hash_f hashes =
+  let rec create_row acc = function
+    | [] -> acc
+    | hash :: [] ->
+      (hash_f (hash ^ hash)) :: acc
+    | hash1 :: hash2 :: hashes ->
+      create_row (hash_f (hash1 ^ hash2) :: acc) hashes
+  in
+  if (List.length hashes) = 1 then List.hd hashes
+  else
+    let row = create_row [] hashes in
+    let row = List.rev row in
+    merkle_tree_hash hash_f row
+;;
