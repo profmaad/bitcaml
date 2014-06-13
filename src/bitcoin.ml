@@ -47,3 +47,7 @@ module Script = struct
     include Bitcoin_script_interpreter;;
   end
 end
+
+module Rules = struct
+  include Bitcoin_rules;;
+end

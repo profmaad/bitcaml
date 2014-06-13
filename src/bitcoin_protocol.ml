@@ -1,4 +1,5 @@
 (* Magic value describing the network to use *)
+let coin_size = 100000000L;;
 let satoshis_per_bitoin = 100000000.0;;
 
 type magic = 

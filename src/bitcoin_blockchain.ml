@@ -11,7 +11,8 @@ let init_db db =
     hash TEXT COLLATE BINARY NOT NULL,
     height INTEGER NOT NULL,
     cumulative_log_difficulty REAL NOT NULL,
-    previous_block INTEGER NOT NULL
+    previous_block INTEGER NOT NULL,
+    is_main BOOLEAN NOT NULL
   );";
   S.execute db
     sqlinit"CREATE TABLE IF NOT EXISTS orphans(
@@ -23,7 +24,48 @@ let init_db db =
   S.execute db
     sqlinit"CREATE INDEX IF NOT EXISTS hash_index ON blockchain (hash);";
   S.execute db
+    sqlinit"CREATE INDEX IF NOT EXISTS mainchain_hash_index ON blockchain (hash, is_main);";
+  S.execute db
     sqlinit"CREATE INDEX IF NOT EXISTS previous_block_index ON blockchain (previous_block);";
+  S.execute db
+    sqlinit"CREATE INDEX IF NOT EXISTS orphans_hash_index ON orphans (hash);";
+  S.execute db
+    sqlinit"CREATE INDEX IF NOT EXISTS orphans_previous_block_hash_index ON orphans (previous_block_hash);";
+
+  S.execute db
+    sqlinit"CREATE TABLE IF NOT EXISTS memory_pool(
+    id INTEGER PRIMARY KEY,
+    hash TEXT COLLATE BINARY NOT NULL,
+    output_count INTEGER NOT NULL,
+    is_orphan BOOLEAN NOT NULL,
+    data BLOB NOT NULL
+  );";
+  S.execute db
+    sqlinit"CREATE INDEX IF NOT EXISTS memory_pool_hash_index ON memory_pool (hash);";
+  S.execute db
+    sqlinit"CREATE INDEX IF NOT EXISTS memory_pool_orphan_index ON memory_pool (is_orphan);";
+
+  S.execute db
+    sqlinit"CREATE TABLE IF NOT EXISTS transactions(
+    id INTEGER PRIMARY KEY,
+    hash TEXT COLLATE BINARY NOT NULL,
+    block INTEGER NOT NULL,
+    output_count INTEGER NOT NULL
+  );";
+  S.execute db
+    sqlinit"CREATE TABLE IF NOT EXISTS unspent_transaction_outputs(
+    id INTEGER PRIMARY KEY,
+    hash TEXT COLLATE BINARY NOT NULL,
+    output_index INTEGER NOT NULL,
+    value INTEGER NOT NULL,
+    script TEXT COLLATE BINARY NOT NULL
+  );";
+  S.execute db
+    sqlinit"CREATE INDEX IF NOT EXISTS transactions_hash_index ON transactions (hash);";
+  S.execute db
+    sqlinit"CREATE INDEX IF NOT EXISTS transactions_block_index ON transactions (block);";
+  S.execute db
+    sqlinit"CREATE INDEX IF NOT EXISTS utxo_hash_index ON unspent_transaction_outputs (hash, output_index);";
 ;;
 
 type insertion_result =
@@ -112,7 +154,7 @@ let insert_block_into_blockchain hash previous_block_hash log_difficulty db =
     | None -> InsertionFailed
     | Some (previous_block_id, _, previous_block_height, _, previous_block_cld) ->
       let record_id = S.insert db
-	sqlc"INSERT INTO blockchain(hash, height, previous_block, cumulative_log_difficulty) VALUES(%s, %L, %L, %f)"
+	sqlc"INSERT INTO blockchain(hash, height, previous_block, cumulative_log_difficulty, is_main) VALUES(%s, %L, %L, %f, 1)" (* TODO: proper main chain handling *)
 	hash
 	(Int64.add previous_block_height 1L)
 	previous_block_id
@@ -175,7 +217,7 @@ let insert_genesis_block db =
   let log_difficulty = log_difficulty_of_difficulty_bits Config.testnet3_genesis_block_header.block_difficulty_target in
   if not (block_exists hash db) then
     Some (S.insert db
-	    sqlc"INSERT INTO blockchain(hash, height, previous_block, cumulative_log_difficulty) VALUES(%s, %L, %L, %f)"
+	    sqlc"INSERT INTO blockchain(hash, height, previous_block, cumulative_log_difficulty, is_main) VALUES(%s, %L, %L, %f, 1)"
 	    hash
 	    0L
 	    0L
