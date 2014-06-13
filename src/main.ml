@@ -127,6 +127,20 @@ let () =
   | Bitcoin.Script.Interpreter.Invalid -> print_endline "Script result: INVALID"; print_endline "FAILED"
   );
 
+  print_endline "Testing merkle tree hashing...";
+  let merkle_root_new = Bitcoin.Rules.merkle_root_of_block block_new in
+  ( if merkle_root_new = block_new.block_header.merkle_root then
+      Printf.printf "PASSED: %s =\n        %s\n" (Utils.hex_string_of_string merkle_root_new) (Utils.hex_string_of_string block_new.block_header.merkle_root)
+    else
+      Printf.printf "FAILED: %s !=\n        %s\n" (Utils.hex_string_of_string merkle_root_new) (Utils.hex_string_of_string block_new.block_header.merkle_root)
+  );
+  let merkle_root_old = Bitcoin.Rules.merkle_root_of_block block_old in
+  ( if merkle_root_old = block_old.block_header.merkle_root then
+      Printf.printf "PASSED: %s =\n        %s\n" (Utils.hex_string_of_string merkle_root_old) (Utils.hex_string_of_string block_old.block_header.merkle_root)
+    else
+      Printf.printf "FAILED: %s !=\n        %s\n" (Utils.hex_string_of_string merkle_root_old) (Utils.hex_string_of_string block_old.block_header.merkle_root)
+  );
+
   Printf.printf "Opening and initializing blockchain db at %s...\t" Config.testnet3_blockchain_db;
   let blockchain_db = Bitcoin.Blockchain.open_db Config.testnet3_blockchain_db in
   print_endline "DONE";
