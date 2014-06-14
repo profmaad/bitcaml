@@ -141,8 +141,8 @@ let () =
       Printf.printf "FAILED: %s !=\n        %s\n" (Utils.hex_string_of_string merkle_root_old) (Utils.hex_string_of_string block_old.block_header.merkle_root)
   );
 
-  Printf.printf "Opening and initializing blockchain db at %s...\t" Config.testnet3_blockchain_db;
-  let blockchain_db = Bitcoin.Blockchain.DB.open_db Config.testnet3_blockchain_db in
+  Printf.printf "Opening and initializing blockchain at %s...\t" Config.testnet3_folder;
+  let blockchain = Bitcoin.Blockchain.init_default Config.testnet3_folder in
   print_endline "DONE";
 
   print_string "Establishing TCP connection to peer...\t\t";
@@ -155,7 +155,7 @@ let () =
     peer_version = Bitcoin.Peer.default_version;
     peer_socket = peer_socket;
     peer_debug = false;
-    blockchain = blockchain_db;
+    blockchain = blockchain;
   } in
 
   Bitcoin.Peer.handle_peer peer;

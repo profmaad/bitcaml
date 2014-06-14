@@ -1,8 +1,20 @@
 open Bitcoin_protocol;;
 open Bitcoin_rules;;
-open Bitcoin_blockchain_db;;
+
+module DB = struct
+  include Bitcoin_blockchain_db;;
+end
+module Blockstorage = struct
+  include Bitcoin_blockchain_blockstorage;;
+end
 
 exception Rejected of int * rejection_reason;;
+
+type blockchain = {
+  db : DB.t;
+  blockstorage : Blockstorage.t;
+}
+type t = blockchain;;
 
 (* tx rules 2-4 of https://en.bitcoin.it/wiki/Protocol_rules *)
 let verify_basic_transaction_rules tx =
@@ -32,4 +44,12 @@ let verify_block block =
   (* skip check 14 since we don't have checkpoints *)
 
   (* 15. Add block into the tree. There are three cases: 1. block further extends the main branch; 2. block extends a side branch but does not add enough difficulty to make it become the new main branch; 3. block extends a side branch and makes it the new main branch. *)
+;;
+
+let init_default path =
+  Utils.mkdir_maybe path 0o755;
+  {
+    db = DB.open_db (path ^ "blockchain.sqlite3");
+    blockstorage = Blockstorage.init_default (path ^ "blocks/")
+  }
 ;;

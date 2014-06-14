@@ -25,8 +25,6 @@ let testnet3_genesis_block_header = {
 
 let bitcaml_folder = "/home/profmaad/.bitcaml/"
 let testnet3_folder = bitcaml_folder ^ "testnet3/"
-let testnet3_blockchain_db = testnet3_folder ^ "blockchain.sqlite3"
-let testnet3_blocks_folder = testnet3_folder ^ "blocks/"
 
 let testnet3_initial_block_hashes = [
   Utils.reverse_string "\x00\x00\x00\x00\xb8\x73\xe7\x97\x84\x64\x7a\x6c\x82\x96\x2c\x70\xd2\x28\x55\x7d\x24\xa7\x47\xea\x4d\x1b\x8b\xbe\x87\x8e\x12\x06";

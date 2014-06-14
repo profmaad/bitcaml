@@ -27,10 +27,6 @@ end
 
 module Blockchain = struct
   include Bitcoin_blockchain;;
-
-  module DB = struct
-    include Bitcoin_blockchain_db;;
-  end
 end
 
 module Script = struct

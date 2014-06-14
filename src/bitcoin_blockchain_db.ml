@@ -2,7 +2,7 @@ open Bitcoin_protocol;;
 
 module Sqlexpr = Sqlexpr_sqlite.Make(Sqlexpr_concurrency.Id);;
 module S = Sqlexpr;;
-type t_db = S.db;;
+type t = S.db;;
 
 let difficulty_1_target = {
   bits_base = 0x00ffff;

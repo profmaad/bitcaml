@@ -142,3 +142,14 @@ let split_list list length =
   let first, second = split_list_ list length [] in
   (List.rev first, second)
 ;;
+
+let rec random_list limit n =
+  if n = 0 then []
+  else
+    (Random.int limit) :: (random_list limit (n - 1))
+;;
+
+let mkdir_maybe path mode =
+  try Unix.mkdir path mode with
+  | Unix.Unix_error (Unix.EEXIST, "mkdir", path) -> ()
+;;
