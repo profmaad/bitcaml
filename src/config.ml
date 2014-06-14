@@ -23,7 +23,7 @@ let testnet3_genesis_block_header = {
   block_nonce = 414098458l;
 }
 
-let bitcaml_folder = "/home/profmaad/.bitcaml/"
+let bitcaml_folder = "/home/profmaad/encdata/.bitcaml/"
 let testnet3_folder = bitcaml_folder ^ "testnet3/"
 
 let testnet3_initial_block_hashes = [

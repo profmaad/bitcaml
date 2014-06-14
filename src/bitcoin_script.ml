@@ -366,3 +366,22 @@ let data_item_of_bool = function
   | false -> ""
   | true -> "\x01"
 ;;
+
+let sigop_count script =
+  let constant_pusher_value opcode =
+    if (opcode >= 0x51) && (opcode <= 0x60) then opcode - 0x50
+    else 20
+  in
+  let rec sigop_count_acc acc = function
+    | [] -> acc
+    | CheckSig :: script
+    | CheckSigVerify :: script -> sigop_count_acc (acc + 1) script
+    | (Data (opcode, _)) :: CheckMultiSig :: script
+    | (Data (opcode, _)) :: CheckMultiSigVerify :: script ->
+      sigop_count_acc (acc + (constant_pusher_value opcode)) script
+    | CheckMultiSig :: script
+    | CheckMultiSigVerify :: script -> sigop_count_acc (acc + 20) script
+    | _ :: script -> sigop_count_acc acc script
+  in
+  sigop_count_acc 0 script
+;;

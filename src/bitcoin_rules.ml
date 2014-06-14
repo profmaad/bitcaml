@@ -4,8 +4,22 @@ open Bitcoin_protocol;;
 let max_block_size = 1000000;;
 let coinbase_maturity = 100;;
 let max_money = Int64.mul 21000000L coin_size;;
+let max_block_into_future = 2. *. 60. *. 60.;;
+let max_block_sigops = max_block_size / 50;;
+let difficulty_change_interval = 2016;;
+let timestamp_verification_predecessors = 11;;
 
 let legal_money_range i = (i >= 0L) && (i <= max_money);;
+
+let expected_new_difficulty old_difficulty actual_timespan =
+  let two_weeks = 14. *. 24. *. 60. *. 60. in
+  let timespan = match actual_timespan with
+    | i when i < (two_weeks /. 4.) -> two_weeks /. 4.
+    | i when i > (two_weeks *. 4.) -> two_weeks *. 4.
+    | i -> i
+  in
+  old_difficulty *. (timespan /. two_weeks)
+;;
 
 (* we ingest the hex representation of the little-endian hash representation in blocks of 8 characters = 4 bytes *)
 (* each block can then be represented as an int64 *)
@@ -73,6 +87,8 @@ let transaction_is_coinbase tx =
   ((List.length tx.transaction_inputs) = 1) &&
     (transaction_input_is_coinbase (List.hd tx.transaction_inputs))
 ;;
+
+let coinbase_script_length_range i = (i >= 2) || (i <= 100);;
 
 let transaction_output_in_legal_money_range txout = legal_money_range txout.transaction_output_value;;
 

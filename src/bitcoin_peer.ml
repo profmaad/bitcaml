@@ -68,6 +68,11 @@ let rec receive_message_with_command command peer =
   | Some m -> receive_message_with_command command peer
 ;;
 
+(* TODO: properly handle network time *)
+let network_median_time _ = 
+  Utils.unix_tm_of_now ()
+;;
+
 type connection_state =
 | UninitializedState
 | VersionSendState
@@ -147,7 +152,7 @@ let construct_block_locator_list_message peer hash_stop =
     let height = if height <= 0L then 0L else height in
     match Bitcoin_blockchain_db.retrieve_block_at_height height blockchain_db with
     | None -> []
-    | Some (_, hash, _, _, _) ->
+    | Some (_, hash, _, _, _, _, _, _, _, _, _) ->
       hash :: if height = 0L then [] else
 	  (select_block_hashes next_step_size (Int64.sub height next_step_size) (Int64.add count 1L) blockchain_db)
   in
@@ -215,11 +220,12 @@ let handle_block peer block =
   let hash = Bitcoin_protocol_generator.block_hash block.block_header in
   debug_may peer (fun () -> Printf.printf "[INFO] received block %s\n" (Utils.hex_string_of_hash_string hash));
   ( try
-      Bitcoin_blockchain.verify_block block;
+      Bitcoin_blockchain.verify_block peer.blockchain (network_median_time peer) block;
       Printf.printf "[INFO] block %s verified successfully\n" (Utils.hex_string_of_hash_string hash);
-    with Bitcoin_blockchain.Rejected (rule, reason) ->
+    with
+    | Bitcoin_blockchain.Rejected (rule, reason) ->
       Printf.printf "[WARNING] block %s failed verification on rule %d\n" (Utils.hex_string_of_hash_string hash) rule;
-      exit 1;
+    | Bitcoin_blockchain.BlockIsOrphan -> ()
   );
   match Bitcoin_blockchain_db.insert_block block.block_header peer.blockchain.Bitcoin_blockchain.db with
   | Bitcoin_blockchain_db.InsertionFailed -> Printf.printf "[ERROR] failed to insert block %s\n" (Utils.hex_string_of_hash_string hash)

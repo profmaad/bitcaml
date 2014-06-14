@@ -84,10 +84,10 @@ let le_bytestring_of_int64 i bytesize =
 ;;
 
 let unix_tm_of_now () = Unix.localtime (Unix.time ());;
-let unix_tm_of_int32 timestamp = 
+let unix_tm_of_int32 timestamp =
   Unix.localtime (Int32.to_float timestamp)
 ;;
-let unix_tm_of_int64 timestamp = 
+let unix_tm_of_int64 timestamp =
   Unix.localtime (Int64.to_float timestamp)
 ;;
 let int32_of_unix_tm unix_tm = 
@@ -103,6 +103,14 @@ let string_of_unix_tm time =
 ;;
 let string_of_timestamp timestamp =
   string_of_unix_tm (unix_tm_of_int64 timestamp)
+;;
+let float_time_difference time1 time2 =
+  time1 -. time2
+;;
+let time_difference time1 time2 =
+  let time1_float, _ = Unix.mktime time1 in
+  let time2_float, _ = Unix.mktime time2 in
+  float_time_difference time1_float time2_float
 ;;
 
 let string_from_zeroterminated_string zts =
