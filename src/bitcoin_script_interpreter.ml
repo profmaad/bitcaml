@@ -467,8 +467,8 @@ let execute_word stack altstack tx_data script_data = function
   | CodeSeparator -> ()
   | CheckSig -> op_checksig stack tx_data script_data
   | CheckSigVerify -> op_checksig stack tx_data script_data; op_verify stack
-  | CheckMultiSig -> raise Not_implemented
-  | CheckMultiSigVerify -> raise Not_implemented
+  | CheckMultiSig -> op_checkmultisig stack tx_data script_data
+  | CheckMultiSigVerify -> op_checkmultisig stack tx_data script_data; op_verify stack
 (* Pseudo-words *)
   | PubKeyHash -> raise Result_invalid
   | PubKey -> raise Result_invalid
