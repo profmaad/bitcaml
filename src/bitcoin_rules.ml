@@ -2,7 +2,7 @@ open Bitcoin_protocol;;
 
 (* network rule constants *)
 let max_block_size = 1000000;;
-let coinbase_maturity = 100;;
+let coinbase_maturity = 100L;;
 let max_money = Int64.mul 21000000L coin_size;;
 let max_block_into_future = 2. *. 60. *. 60.;;
 let max_block_sigops = max_block_size / 50;;

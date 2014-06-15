@@ -53,6 +53,14 @@ let send_message peer message =
 ;;
 let send_payload peer payload = send_message peer (message_of_payload peer payload);;
 
+let send_rejection peer message code reason =
+  send_payload peer (RejectPayload {
+    rejected_message = message;
+    rejection_code = code;
+    rejection_reason = reason;
+  })
+;;
+
 let receive_message peer =
   let print_received_message_type m =
     Printf.printf "Received %s message\n" (Bitcoin_protocol_pp.pp_string_of_command (command_of_message_payload m.payload))
@@ -116,7 +124,7 @@ let initialize_connection peer =
   let peer_ref = ref peer in
   let rec connection_fsm state =
     let new_state = state_entry peer state in
-    if new_state != state then connection_fsm new_state
+    if new_state <> state then connection_fsm new_state
     else
       match state with
       | InitializedState -> ()
@@ -218,28 +226,18 @@ let own_addr_payload peer =
 
 let handle_block peer block =
   let hash = Bitcoin_protocol_generator.block_hash block.block_header in
-  debug_may peer (fun () -> Printf.printf "[INFO] received block %s\n" (Utils.hex_string_of_hash_string hash));
-  ( try
-      Bitcoin_blockchain.verify_block peer.blockchain (network_median_time peer) block;
-      Printf.printf "[INFO] block %s verified successfully\n" (Utils.hex_string_of_hash_string hash);
-    with
-    | Bitcoin_blockchain.Rejected (rule, reason) ->
-      Printf.printf "[WARNING] block %s failed verification on rule %d\n" (Utils.hex_string_of_hash_string hash) rule;
-    | Bitcoin_blockchain.BlockIsOrphan -> ()
+  debug_may peer (fun () -> Printf.printf "[INFO] received block %s\n%!" (Utils.hex_string_of_hash_string hash));  
+  (try Bitcoin_blockchain.handle_block peer.blockchain (network_median_time peer) block with
+  | Bitcoin_blockchain.BlockIsOrphan ->
+    debug_may peer (fun () -> Printf.printf "[INFO] inserted block %s as orphan\n" (Utils.hex_string_of_hash_string hash));
+    send_payload peer (GetBlocksPayload (construct_block_locator_list_message peer block.block_header.previous_block_hash))
+  | Bitcoin_blockchain.BlockIsDuplicate ->
+    debug_may peer (fun () -> Printf.printf "[INFO] block %s is a duplicate, not inserted\n" (Utils.hex_string_of_hash_string hash));
+  | Bitcoin_blockchain.Rejected (reason, rejection_code) ->
+    debug_may peer (fun () -> Printf.printf "[INFO] rejecting block %s: %s\n" (Utils.hex_string_of_hash_string hash) reason);
+    (* send_rejection peer "block" rejection_code reason; *)
+    ignore (exit 23);
   );
-  match Bitcoin_blockchain_db.insert_block block.block_header peer.blockchain.Bitcoin_blockchain.db with
-  | Bitcoin_blockchain_db.InsertionFailed -> Printf.printf "[ERROR] failed to insert block %s\n" (Utils.hex_string_of_hash_string hash)
-  | Bitcoin_blockchain_db.NotInsertedExisted ->
-    Printf.printf "[WARNING] tried to insert block %s, which already existed\n" (Utils.hex_string_of_hash_string hash);
-    if Bitcoin_blockchain_db.orphan_exists hash peer.blockchain.Bitcoin_blockchain.db then
-      send_payload peer (GetBlocksPayload (construct_block_locator_list_message peer block.block_header.previous_block_hash))      
-  | Bitcoin_blockchain_db.InsertedIntoBlockchain id ->
-    debug_may peer (fun () -> Printf.printf "[INFO] inserted block %s into blockchain (id: %Lu)\n" (Utils.hex_string_of_hash_string hash) id);
-    Bitcoin_blockchain_blockstorage.store_block peer.blockchain.Bitcoin_blockchain.blockstorage block 
-  | Bitcoin_blockchain_db.InsertedAsOrphan id ->
-    debug_may peer (fun () -> Printf.printf "[INFO] inserted block %s as orphan (id: %Lu)\n" (Utils.hex_string_of_hash_string hash) id);
-    Bitcoin_blockchain_blockstorage.store_block peer.blockchain.Bitcoin_blockchain.blockstorage block;
-    send_payload peer (GetBlocksPayload (construct_block_locator_list_message peer block.block_header.previous_block_hash));
 ;;
 
 let handle_inv_payload peer p =

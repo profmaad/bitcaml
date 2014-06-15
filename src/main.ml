@@ -141,6 +141,16 @@ let () =
       Printf.printf "FAILED: %s !=\n        %s\n" (Utils.hex_string_of_string merkle_root_old) (Utils.hex_string_of_string block_old.block_header.merkle_root)
   );
 
+  print_string "Sanity testing weird script int encoding...\t";
+  let test_value = "\xff\xff\xff\x82" in
+  let decoded_test_value = Option.get (Bitcoin.Script.int64_of_data_item test_value) in
+  let encoded_test_value = Bitcoin.Script.data_item_of_int64 decoded_test_value in
+  ( if (compare test_value encoded_test_value) <> 0 then
+    Printf.printf "FAILED: %s -> %Ld -> %s\n" (Utils.hex_encode test_value) decoded_test_value (Utils.hex_encode encoded_test_value)
+  else
+    print_endline "PASSED"
+  );
+
   Printf.printf "Opening and initializing blockchain at %s...\t" Config.testnet3_folder;
   let blockchain = Bitcoin.Blockchain.init_default Config.testnet3_folder in
   print_endline "DONE";
@@ -154,7 +164,7 @@ let () =
     local_version = local_version ();
     peer_version = Bitcoin.Peer.default_version;
     peer_socket = peer_socket;
-    peer_debug = false;
+    peer_debug = true;
     blockchain = blockchain;
   } in
 

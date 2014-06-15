@@ -68,25 +68,28 @@ let init_db db =
   S.execute db
     sqlinit"CREATE INDEX IF NOT EXISTS memory_pool_orphan_index ON memory_pool (is_orphan);";
 
-  S.execute db
-    sqlinit"CREATE TABLE IF NOT EXISTS transactions(
-    id INTEGER PRIMARY KEY,
-    hash TEXT COLLATE BINARY NOT NULL,
-    block INTEGER NOT NULL,
-    output_count INTEGER NOT NULL
-  );";
+  (* S.execute db *)
+  (*   sqlinit"CREATE TABLE IF NOT EXISTS transactions( *)
+  (*   id INTEGER PRIMARY KEY, *)
+  (*   hash TEXT COLLATE BINARY NOT NULL, *)
+  (*   block INTEGER NOT NULL, *)
+  (*   output_count INTEGER NOT NULL *)
+  (*   is_coinbase BOOLEAN NOT NULL *)
+  (* );"; *)
   S.execute db
     sqlinit"CREATE TABLE IF NOT EXISTS unspent_transaction_outputs(
     id INTEGER PRIMARY KEY,
     hash TEXT COLLATE BINARY NOT NULL,
     output_index INTEGER NOT NULL,
+    block INTEGER NOT NULL,
     value INTEGER NOT NULL,
-    script TEXT COLLATE BINARY NOT NULL
+    script TEXT COLLATE BINARY NOT NULL,
+    is_coinbase BOOLEAN NOT NULL
   );";
-  S.execute db
-    sqlinit"CREATE INDEX IF NOT EXISTS transactions_hash_index ON transactions (hash);";
-  S.execute db
-    sqlinit"CREATE INDEX IF NOT EXISTS transactions_block_index ON transactions (block);";
+  (* S.execute db *)
+  (*   sqlinit"CREATE INDEX IF NOT EXISTS transactions_hash_index ON transactions (hash);"; *)
+  (* S.execute db *)
+  (*   sqlinit"CREATE INDEX IF NOT EXISTS transactions_block_index ON transactions (block);"; *)
   S.execute db
     sqlinit"CREATE INDEX IF NOT EXISTS utxo_hash_index ON unspent_transaction_outputs (hash, output_index);";
 ;;
@@ -125,6 +128,11 @@ let block_height hash db =
   | None -> None
   | Some (_, _, height, _, _, _, _, _, _, _, _) -> Some height
 ;;
+let block_height_by_id id db =
+  match retrieve_block_by_id id db with
+  | None -> None
+  | Some (_, _, height, _, _, _, _, _, _, _, _) -> Some height
+;;
 let block_cumulative_log_difficulty hash db =
   match retrieve_block hash db with
   | None -> None
@@ -137,15 +145,20 @@ let block_exists hash db =
   | Some x -> true
 ;;
 
-let retrieve_latest_mainchain_block db =
+let retrieve_highest_cld_block db =
   S.select_one_maybe db
-    sqlc"SELECT @L{id}, @s{hash}, @L{height}, @L{previous_block}, @f{cumulative_log_difficulty}, @b{is_main}, @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce} FROM blockchain ORDER BY height DESC, cumulative_log_difficulty DESC"
+    sqlc"SELECT @L{id}, @s{hash}, @L{height}, @L{previous_block}, @f{cumulative_log_difficulty}, @b{is_main}, @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce} FROM blockchain ORDER BY cumulative_log_difficulty DESC, height DESC"
 ;;
 
 let mainchain_height db =
-  match retrieve_latest_mainchain_block db with
+  match retrieve_highest_cld_block db with
   | None -> 0L
   | Some (_, _, height, _, _, _, _, _, _, _, _) -> height
+;;
+let mainchain_cumulative_log_difficulty db =
+  match retrieve_highest_cld_block db with
+  | None -> None
+  | Some (_, _, _, _, cld, _, _, _, _, _, _) -> Some cld
 ;;
 
 let rec nth_predecessor_by_id id n db =
@@ -195,19 +208,75 @@ let block_exists_anywhere hash db =
   (block_exists hash db) || (orphan_exists hash db)
 ;;
 
+let delete_mempool_transaction db hash =
+  S.execute db
+    sqlc"DELETE FROM memory_pool WHERE hash = %s" hash
+;;
+
+let delete_block_transactions_from_mempool db block = 
+  List.iter (delete_mempool_transaction db) (List.map Bitcoin_protocol_generator.transaction_hash block.block_transactions)
+;;
+
+let delete_utxo db hash index =
+  S.execute db
+    sqlc"DELETE FROM unspent_transaction_outputs WHERE hash = %s AND output_index = %l"
+    hash
+    index
+;;
+let insert_utxo db (hash, output_index, block, value, script, is_coinbase) =
+  ignore (
+    S.insert db
+      sqlc"INSERT INTO unspent_transaction_outputs(hash, output_index, block, value, script, is_coinbase) VALUES(%s, %l, %L, %L, %s, %b)"
+      hash
+      output_index
+      block
+      value
+      script
+      is_coinbase
+  )
+;;
+let retrieve_utxo db hash index =
+  S.select_one_maybe db
+    sqlc"SELECT @L{id}, @s{hash}, @l{output_index}, @L{block}, @L{value}, @s{script}, @b{is_coinbase} FROM unspent_transaction_outputs WHERE hash = %s AND output_index = %l"
+    hash
+    index
+;;
+
+let update_utxo_with_transaction db block_id tx_index tx =
+  let hash = Bitcoin_protocol_generator.transaction_hash tx in
+
+  let outpoint_of_txout txout_index txout = 
+    (hash, Int32.of_int txout_index, block_id, txout.transaction_output_value, txout.output_script, tx_index = 0)
+  in
+  
+  let spent_outpoints = List.map (fun txin -> (txin.previous_transaction_output.referenced_transaction_hash, txin.previous_transaction_output.transaction_output_index)) tx.transaction_inputs in
+  let created_outpoints = List.mapi outpoint_of_txout tx.transaction_outputs in
+
+  List.iter (fun (hash, index) -> delete_utxo db hash index) spent_outpoints;
+  List.iter (insert_utxo db) created_outpoints
+;;
+(* since a transaction can spend an output that only appeard in the same block, we have to handle transactions in order *)
+let update_utxo_with_block db block hash =
+  match block_id hash db with
+  | None -> failwith "tried to update utxo for non-existant block"
+  | Some block_id ->
+    List.iteri (update_utxo_with_transaction db block_id) block.block_transactions
+;;
+
 let insert_block_into_blockchain hash previous_block_hash log_difficulty header db =
   match block_exists hash db with
   | true -> NotInsertedExisted
   | false ->
     match retrieve_block previous_block_hash db with
     | None -> InsertionFailed
-    | Some (previous_block_id, _, previous_block_height, _, previous_block_cld, _, _, _, _, _, _) ->
+    | Some (previous_block_id, _, previous_block_height, _, previous_block_cld, previous_is_main, _, _, _, _, _) ->
       let record_id = S.insert db
-	sqlc"INSERT INTO blockchain(hash, height, previous_block, cumulative_log_difficulty, is_main, block_version, merkle_root, timestamp, difficulty_bits, nonce) VALUES(%s, %L, %L, %f, 1, %d, %s, %L, %l, %l)" (* TODO: proper main chain handling *)
+	sqlc"INSERT INTO blockchain(hash, height, previous_block, cumulative_log_difficulty, is_main, block_version, merkle_root, timestamp, difficulty_bits, nonce) VALUES(%s, %L, %L, %f, %b, %d, %s, %L, %l, %l)" (* TODO: proper main chain handling *)
 	hash
 	(Int64.add previous_block_height 1L)
 	previous_block_id
 	(previous_block_cld +. log_difficulty)
+	previous_is_main
 	header.block_version
 	header.merkle_root
 	(Utils.int64_of_unix_tm header.block_timestamp)

@@ -177,54 +177,67 @@ let op_equal stack =
   push (data_item_of_bool (data_items_equal (pop stack) (pop stack))) stack
 ;;
 
-let int32_of_data_item item =
+let arithmetic_int64_of_data_item item =
   if data_item_length item > max_arithmetic_data_item_size then raise Illegal_arithmetic
   else
     match int64_of_data_item item with
     | None -> raise Illegal_arithmetic
-    | Some i -> Int64.to_int32 i
+    | Some i -> i
 ;;
-let push_int32 i (stack : stack) = Stack.push (data_item_of_int64 (Int64.of_int32 i)) stack;;
-let pop_int32 (stack : stack) =
+let push_int64 i (stack : stack) = Stack.push (data_item_of_int64 i) stack;;
+let pop_int64 (stack : stack) =
   let (top_item : data_item) = Stack.pop stack in
-  int32_of_data_item top_item
+  arithmetic_int64_of_data_item top_item
 ;;
 
-let bool_of_int32 = function
-  | 0l -> false
+let bool_of_int64 = function
+  | 0L -> false
   | _ -> true
 ;;
-let int32_of_bool = function
-  | false -> 0l
-  | true -> 1l
+let int64_of_bool = function
+  | false -> 0L
+  | true -> 1L
 ;;
 
-let push_bool_arithmetic b (stack : stack) = push_int32 (int32_of_bool b) stack;;
-let pop_bool_arithmetic (stack : stack) = bool_of_int32 (pop_int32 stack);;
+let push_bool_arithmetic b (stack : stack) = push_int64 (int64_of_bool b) stack;;
+let pop_bool_arithmetic (stack : stack) = bool_of_int64 (pop_int64 stack);;
 
 let op_not stack = push_bool_arithmetic (not (pop_bool_arithmetic stack)) stack;;
 let op_0notequal stack =
-  let bool_item = bool_of_int32 (pop_int32 stack) in
-  push_int32 (int32_of_bool bool_item) stack
+  let bool_item = bool_of_int64 (pop_int64 stack) in
+  push_int64 (int64_of_bool bool_item) stack
 ;;
-let op_sub stack =
-  let b = pop_int32 stack in
-  let a = pop_int32 stack in
-  push_int32 (Int32.sub a b) stack
-;; 
 let minmax f stack =
-  let b = pop_int32 stack in
-  let a = pop_int32 stack in
-  push_int32 (if (f a b) then a else b) stack
+  let b = pop_int64 stack in
+  let a = pop_int64 stack in
+  push_int64 (if (f a b) then a else b) stack
   
 let op_min stack = minmax ( < ) stack;;
 let op_max stack = minmax ( > ) stack;;
 let op_within stack = 
-  let max = pop_int32 stack in
-  let min = pop_int32 stack in
-  let x = pop_int32 stack in
+  let max = pop_int64 stack in
+  let min = pop_int64 stack in
+  let x = pop_int64 stack in
   push_bool_arithmetic (min <= x && x < max) stack
 ;;
+
+let binary_arithmetic_op_int64_result f stack =  
+  let op2 = pop_int64 stack in
+  let op1 = pop_int64 stack in
+  let result = f op1 op2 in
+  Printf.printf "[DEBUG] binary_arithmetic_op_int32_result op1: %Ld, op2: %Ld, result: %Ld\n" op1 op2 result;
+  push_int64 result stack
+;;
+let binary_arithmetic_op_boolean_result f stack =
+  let op2 = pop_int64 stack in
+  let op1 = pop_int64 stack in
+  let result = f op1 op2 in
+  Printf.printf "[DEBUG] binary_arithmetic_op_boolean_result op1: %Ld, op2: %Ld, result: %b\n" op1 op2 result;
+  push_bool_arithmetic result stack
+;;
+
+let op_add stack = binary_arithmetic_op_int64_result Int64.add stack;;
+let op_sub stack = binary_arithmetic_op_int64_result Int64.sub stack;;
 
 let hash f stack =
   push (f (pop stack)) stack
@@ -360,14 +373,14 @@ let op_checkmultisig stack tx_data script_after_codesep =
 	check_signatures_against_public_keys (signature :: signatures) public_keys tx_data subscript
   in
 
-  match pop_int32 stack with
-  | i when (i > 20l) || (i < 0l) -> push (data_item_of_bool false) stack
+  match pop_int64 stack with
+  | i when (i > 20L) || (i < 0L) -> push (data_item_of_bool false) stack
   | public_key_count ->
-    let public_keys = pop_to_list (Int32.to_int public_key_count) stack in
-    match pop_int32 stack with
-    | i when (i < 0l) || (i > public_key_count) -> push (data_item_of_bool false) stack
+    let public_keys = pop_to_list (Int64.to_int public_key_count) stack in
+    match pop_int64 stack with
+    | i when (i < 0L) || (i > public_key_count) -> push (data_item_of_bool false) stack
     | signature_count ->
-      let signatures = pop_to_list (Int32.to_int signature_count) stack in
+      let signatures = pop_to_list (Int64.to_int signature_count) stack in
       ignore(pop stack);
 
       let subscript = List.filter (subscript_filter signatures) script_after_codesep in
@@ -418,15 +431,15 @@ let execute_word stack altstack tx_data script_data = function
   | Equal -> op_equal stack
   | EqualVerify -> op_equal stack; op_verify stack
 (* Arithmetic *)
-  | OneAdd -> push_int32 (Int32.add (pop_int32 stack) 1l) stack
-  | OneSub -> push_int32 (Int32.sub (pop_int32 stack) 1l) stack
+  | OneAdd -> push_int64 (Int64.add (pop_int64 stack) 1L) stack
+  | OneSub -> push_int64 (Int64.sub (pop_int64 stack) 1L) stack
   | TwoMul -> raise Disabled_opcode
   | TwoDiv -> raise Disabled_opcode
-  | Negate -> push_int32 (Int32.neg (pop_int32 stack)) stack
-  | Abs -> push_int32 (Int32.abs (pop_int32 stack)) stack
+  | Negate -> push_int64 (Int64.neg (pop_int64 stack)) stack
+  | Abs -> push_int64 (Int64.abs (pop_int64 stack)) stack
   | Not -> push_bool_arithmetic (not (pop_bool_arithmetic stack)) stack
   | ZeroNotEqual -> push_bool_arithmetic (pop_bool_arithmetic stack) stack
-  | Add -> push_int32 (Int32.add (pop_int32 stack) (pop_int32 stack)) stack
+  | Add -> op_add stack
   | Sub -> op_sub stack
   | Mul -> raise Disabled_opcode
   | Div -> raise Disabled_opcode
@@ -435,13 +448,13 @@ let execute_word stack altstack tx_data script_data = function
   | RShift -> raise Disabled_opcode
   | BoolAnd -> push_bool_arithmetic ((pop_bool_arithmetic stack) && (pop_bool_arithmetic stack)) stack
   | BoolOr -> push_bool_arithmetic ((pop_bool_arithmetic stack) || (pop_bool_arithmetic stack)) stack
-  | NumEqual -> push_bool_arithmetic ((pop_int32 stack) = (pop_int32 stack)) stack
-  | NumEqualVerify -> push_bool_arithmetic ((pop_int32 stack) = (pop_int32 stack)) stack; op_verify stack
-  | NumNotEqual -> push_bool_arithmetic ((pop_int32 stack) != (pop_int32 stack)) stack
-  | LessThan -> push_bool_arithmetic ((pop_int32 stack) > (pop_int32 stack)) stack
-  | GreaterThan -> push_bool_arithmetic ((pop_int32 stack) < (pop_int32 stack)) stack
-  | LessThanOrEqual -> push_bool_arithmetic ((pop_int32 stack) >= (pop_int32 stack)) stack
-  | GreaterThanOrEqual -> push_bool_arithmetic ((pop_int32 stack) <= (pop_int32 stack)) stack
+  | NumEqual -> binary_arithmetic_op_boolean_result ( = ) stack
+  | NumEqualVerify -> binary_arithmetic_op_boolean_result ( = ) stack; op_verify stack
+  | NumNotEqual -> binary_arithmetic_op_boolean_result ( <> ) stack
+  | LessThan -> binary_arithmetic_op_boolean_result ( < ) stack
+  | GreaterThan -> binary_arithmetic_op_boolean_result ( > ) stack
+  | LessThanOrEqual -> binary_arithmetic_op_boolean_result ( <= ) stack
+  | GreaterThanOrEqual -> binary_arithmetic_op_boolean_result ( >= ) stack
   | Min -> op_min stack
   | Max -> op_max stack
   | Within -> op_within stack

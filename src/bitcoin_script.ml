@@ -287,7 +287,7 @@ let word_of_opcode = function
   | 0x8a -> Reserved2
 (* for these two, we match a set of opcodes to the same word *)
   | opcode when (opcode = 0x61 || (opcode >=0xb0 && opcode <= 0xb9)) -> Nop opcode
-  | opcode when (opcode != 0x50 && (opcode >= 0x00 && opcode <= 0x60)) -> Data (opcode, "")
+  | opcode when (opcode <> 0x50 && (opcode >= 0x00 && opcode <= 0x60)) -> Data (opcode, "")
   | opcode -> InvalidOpcode opcode
 ;;
 
@@ -307,25 +307,28 @@ let int64_of_data_item item =
   let rec process_byte acc byte s =
     if byte >= (data_item_length s) then acc
     else
-      let shifted_byte = Int64.shift_left (Int64.of_int (data_item_byte byte s)) (byte * 8) in
+      let this_byte = if byte = ((data_item_length s) - 1) then (data_item_byte byte s) land (lnot 0x80) else (data_item_byte byte s) in
+      let shifted_byte = Int64.shift_left (Int64.of_int this_byte) (byte * 8) in
       let new_acc = Int64.logor shifted_byte acc in
       process_byte new_acc (byte + 1) s
   in
   match data_item_length item with
   | 0 -> Some 0L
-  | i when (i > 4) -> None
+  (* | i when (i > 4) -> None *)
   | _ -> 
+    let negative = ((data_item_byte (-1) item) land 0x80) > 0 in
     let raw_value = process_byte 0x00L 0 item in
     (* MSB >= 0x80 means negative sign *)
-    if ((data_item_byte (-1) item) land 0x80) > 0 then
-      let magnitude = Int64.logand (Int64.shift_left 0x80L (8 * ((data_item_length item) -1 ))) raw_value in
-      Some (Int64.neg magnitude)
+    if negative then (
+      (* let magnitude = Int64.logand (Int64.shift_left 0x80L (8 * ((data_item_length item) -1 ))) raw_value in *)
+      Some (Int64.neg raw_value)
+    )
     else
       Some raw_value
 ;;
 let data_item_of_int64 i =
   let rec bytes_of_int64 i =
-    if i >= 0L then
+    if i > 0L then
       let byte = Int64.to_int (Int64.logand 0xffL i) in
       let shifted_i = Int64.shift_right_logical i 8 in
       let byte_string = String.make 1 (Char.chr byte) in
@@ -336,16 +339,19 @@ let data_item_of_int64 i =
   let magnitude = Int64.abs i in
   let negative = (i < 0L) in
   let bytes = bytes_of_int64 magnitude in
-  if ((data_item_byte 0 bytes) land 0x80) > 0 then
-    Utils.reverse_string ((String.make 1 (if negative then '\x80' else '\x00')) ^ bytes)
+  if (data_item_length bytes) = 0 then bytes
   else (
-    if negative then (
-      let first_byte = data_item_byte 0 bytes in
-      let signed_byte = first_byte lor 0x80 in
-      data_item_set_byte 0 signed_byte bytes;
-      Utils.reverse_string bytes
-    ) else
-      Utils.reverse_string bytes
+    if ((data_item_byte (-1) bytes) land 0x80) > 0 then
+      bytes ^ (String.make 1 (if negative then '\x80' else '\x00'))    
+    else (
+      if negative then (
+	let msb = data_item_byte (-1) bytes in
+	let signed_msb = msb lor 0x80 in
+	data_item_set_byte (-1) signed_msb bytes;
+	bytes
+      ) else
+	bytes
+    )
   )
 ;;
 
