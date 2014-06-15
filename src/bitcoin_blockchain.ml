@@ -193,12 +193,15 @@ let verify_block blockchain time block hash =
   (* 12. Check that nBits value matches the difficulty rules *)
   (* we know it must exist because we just checked it - at least as long as there is no concurrency *)
   let expected_blockchain_height = Int64.add 1L previous_block_height in 
-  if (Int64.rem expected_blockchain_height (Int64.of_int difficulty_change_interval)) = 0L then verify_difficulty_change blockchain hash previous_hash block.block_header;
+  (* if (Int64.rem expected_blockchain_height (Int64.of_int difficulty_change_interval)) = 0L then verify_difficulty_change blockchain hash previous_hash block.block_header; *)
+  (* TODO: REENABLE, doesn't behave well on testnet *)
 
   (* 13. Reject if timestamp is the median time of the last 11 blocks or before *)
-  if not (validate_block_timestamp blockchain hash block.block_header) then raise (Rejected ("time-too-old", RejectionInvalid));
+  (* if not (validate_block_timestamp blockchain hash block.block_header) then raise (Rejected ("time-too-old", RejectionInvalid)); *)
+  (* TODO: REENABLE, doesn't behave well on testnet though *)
   
-  (* skip check 14 since we don't have checkpoints *)    
+  (* skip check 14 since we don't have checkpoints *)
+  ()
 ;;
 
 (* 15. Add block into the tree. *)
@@ -243,9 +246,11 @@ let handle_block blockchain time block =
 
   ( try verify_block blockchain time block hash with
   | BlockIsOrphan ->
+    Printf.printf "[DEBUG] block %s is an orphan\n" (Utils.hex_string_of_hash_string hash);
     ignore (handle_orphan_block blockchain header hash log_difficulty);
     Blockstorage.store_block blockchain.blockstorage block;
     raise BlockIsOrphan
+  | Rejected (reason, RejectionDuplicate) -> raise BlockIsDuplicate
   | Rejected (reason, rejection_code) ->
     Printf.printf "[WARNING] block %s failed verification: %s\n" (Utils.hex_string_of_hash_string hash) reason;
     raise (Rejected (reason, rejection_code));

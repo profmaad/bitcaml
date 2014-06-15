@@ -314,7 +314,7 @@ let int64_of_data_item item =
   in
   match data_item_length item with
   | 0 -> Some 0L
-  (* | i when (i > 4) -> None *)
+  | i when (i > 9) -> None
   | _ -> 
     let negative = ((data_item_byte (-1) item) land 0x80) > 0 in
     let raw_value = process_byte 0x00L 0 item in

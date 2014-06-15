@@ -85,13 +85,13 @@ let push_list items stack =
 ;;
 
 let pop_n n (stack : stack) =
-  let popped_items = pop_to_list (n - 1) stack in
+  let popped_items = pop_to_list n stack in
   let item = pop stack in
   push_list popped_items stack;
   item
 ;;
 let top_n n (stack : stack) =
-  let popped_items = pop_to_list (n - 1) stack in
+  let popped_items = pop_to_list n stack in
   let item = top stack in
   push_list popped_items stack;
   item
@@ -408,8 +408,8 @@ let execute_word stack altstack tx_data script_data = function
   | Over -> op_over stack
   | Pick -> op_pick stack
   | Roll -> op_roll stack
-  | Rot -> roll_n 3 stack
-  | Swap -> roll_n 2 stack
+  | Rot -> roll_n 2 stack
+  | Swap -> roll_n 1 stack
   | Tuck -> op_tuck stack
   | TwoDrop -> ignore (pop_to_list 2 stack)
   | TwoDup -> dup_n 2 stack
@@ -490,20 +490,62 @@ let dump_stack stack =
   in
   Stack.iter print_data_item_with_index stack
 ;;
+let dump_ifstack ifstack not_taken_if_level =
+  let index = ref 0 in
+  let print_bool_with_index b =
+    Printf.printf "\t%d:\t%b\n" !index b;
+    index := !index + 1
+  in
+  Printf.printf "[SCRIPT] NOT_TAKEN_IF_LEVEL: %d\n" not_taken_if_level;
+  Stack.iter print_bool_with_index ifstack
+;;
 
 let execute_script script tx_data =
-  let rec execute_script_ stack altstack tx_data script_after_codesep = function
+  let branch_is_executing ifstack not_taken_if_level = (not_taken_if_level = 0) && ((Stack.is_empty ifstack) || (Stack.top ifstack)) in
+  let rec execute_script_ ifstack not_taken_if_level stack altstack tx_data script_after_codesep = function
     | [] -> (stack, altstack)
     | CodeSeparator :: ws ->
-      execute_script_ stack altstack tx_data ws ws
+      execute_script_ ifstack not_taken_if_level stack altstack tx_data ws ws
+    | If :: ws ->
+      if branch_is_executing ifstack not_taken_if_level then (
+	let value = bool_of_data_item (pop stack) in
+	Stack.push value ifstack;
+	Printf.printf "[SCRIPT] executing word: If (value: %b)\n" value; dump_ifstack ifstack not_taken_if_level;
+	execute_script_ ifstack not_taken_if_level stack altstack tx_data script_after_codesep ws
+      ) else
+	execute_script_ ifstack (not_taken_if_level + 1) stack altstack tx_data script_after_codesep ws
+    | NotIf :: ws ->
+      if branch_is_executing ifstack not_taken_if_level then (
+	let value = bool_of_data_item (pop stack) in
+	Stack.push (not value) ifstack;
+	Printf.printf "[SCRIPT] executing word: NotIf (value: %b)\n" value; dump_ifstack ifstack not_taken_if_level;
+	execute_script_ ifstack not_taken_if_level stack altstack tx_data script_after_codesep ws
+      ) else 
+	execute_script_ ifstack (not_taken_if_level + 1) stack altstack tx_data script_after_codesep ws
+    | Else :: ws ->
+      if not_taken_if_level = 0 then (
+	Stack.push (not (Stack.pop ifstack)) ifstack;
+	Printf.printf "[SCRIPT] executing word: Else\n"; dump_ifstack ifstack not_taken_if_level
+      );
+      execute_script_ ifstack not_taken_if_level stack altstack tx_data script_after_codesep ws
+    | EndIf :: ws ->
+      if branch_is_executing ifstack not_taken_if_level then (
+	ignore (Stack.pop ifstack);
+	Printf.printf "[SCRIPT] executing word: EndIf\n"; dump_ifstack ifstack not_taken_if_level;
+	execute_script_ ifstack not_taken_if_level stack altstack tx_data script_after_codesep ws
+      ) else
+	execute_script_ ifstack (min 0 (not_taken_if_level - 1)) stack altstack tx_data script_after_codesep ws
     | word :: ws ->
-      execute_word stack altstack tx_data script_after_codesep word;
-      dump_stack stack;
-      print_endline "///////////////////////////////";
-      execute_script_ stack altstack tx_data script_after_codesep ws
+      if branch_is_executing ifstack not_taken_if_level then (
+	Printf.printf "[SCRIPT] executing word: %s\n" (Bitcoin_script_pp.pp_string_of_word word);
+	execute_word stack altstack tx_data script_after_codesep word;
+	if (Stack.length stack) < 5 then dump_stack stack;
+	print_endline "///////////////////////////////";
+      );
+      execute_script_ ifstack not_taken_if_level stack altstack tx_data script_after_codesep ws
   in
   try
-    let stack, altstack = execute_script_ (create_stack ()) (create_stack ()) tx_data script script in
+    let stack, altstack = execute_script_ (Stack.create ()) 0 (create_stack ()) (create_stack ()) tx_data script script in
     Result (pop stack)
   with
   | Disabled_opcode -> Invalid
