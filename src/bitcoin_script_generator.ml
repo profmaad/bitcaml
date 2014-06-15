@@ -9,7 +9,7 @@ let bitstring_of_data_word opcode data_item =
     | 0x00 | 0x4f -> empty_bitstring
     | i when (i >= 0x51 && i <= 0x60) -> empty_bitstring
     | i when (i >= 0x01 && i <= 0x4b) ->
-      if length != opcode then raise Malformed_script
+      if length <> opcode then raise Malformed_script
       else bitstring_of_data_item data_item
     | 0x4c ->
       if length > 0xff then raise Malformed_script

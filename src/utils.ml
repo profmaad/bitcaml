@@ -59,7 +59,7 @@ let reverse_hash_string s =
     else dst
   in
   let length = String.length s in
-  if (length mod 2) != 0 then raise (Invalid_argument "Input length not a multiple of 2")
+  if (length mod 2) <> 0 then raise (Invalid_argument "Input length not a multiple of 2")
   else
     let dst = String.make length '\x00' in
     blit_reverse_hash_string s dst length 0

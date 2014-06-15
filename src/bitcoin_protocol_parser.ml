@@ -241,7 +241,7 @@ let parse_block_locator_list_message bits =
     | None, rest -> None
     | Some block_locator_count, bits ->
       let block_locator_list, bits = parse_block_locator_list block_locator_count 0L [] bits in
-      if ((List.length block_locator_list) != (Int64.to_int block_locator_count)) then None
+      if ((List.length block_locator_list) <> (Int64.to_int block_locator_count)) then None
       else
 	bitmatch bits with
 	| { block_locator_hash_stop : 32*8 : string } ->
@@ -323,8 +323,8 @@ let parse_transaction bits =
       | Some output_count, bits ->
 	let outputs, bits = parse_outputs output_count 0L [] bits in
 	if
-	  ((List.length inputs) != (Int64.to_int input_count)) ||
-	  ((List.length outputs) != (Int64.to_int output_count))
+	  ((List.length inputs) <> (Int64.to_int input_count)) ||
+	  ((List.length outputs) <> (Int64.to_int output_count))
 	then (None, bits)
 	else
 	  bitmatch bits with
@@ -389,7 +389,7 @@ let parse_block bits =
   | Some protocol_block_header, bits ->
     let transaction_count = protocol_block_header.block_transaction_count in
     let transactions, bits = parse_transaction_list transaction_count 0L [] bits in
-    if (List.length transactions != (Int64.to_int transaction_count)) then (None, bits)
+    if (List.length transactions <> (Int64.to_int transaction_count)) then (None, bits)
     else
       (Some {
 	block_header = protocol_block_header.basic_block_header;
@@ -414,7 +414,7 @@ let parse_headers_message bits =
   | None, rest -> None
   | Some block_header_count, bits ->
     let protocol_block_headers, bits = parse_protocol_block_header_list block_header_count 0L [] bits in
-    if (List.length protocol_block_headers != (Int64.to_int block_header_count)) then None
+    if (List.length protocol_block_headers <> (Int64.to_int block_header_count)) then None
     else
       Some (HeadersPayload {
 	block_headers = List.rev protocol_block_headers;
