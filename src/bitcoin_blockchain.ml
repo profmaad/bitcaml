@@ -174,7 +174,8 @@ let verify_block blockchain time block hash =
   let previous_hash = block.block_header.previous_block_hash in
 
   (* Reject if duplicate of block we have in any of the three categories *)
-  if (DB.block_exists_anywhere hash blockchain.db) then raise (Rejected ("duplicate", RejectionDuplicate));
+  if (DB.block_exists hash blockchain.db) then raise (Rejected ("duplicate", RejectionDuplicate));
+  if (DB.orphan_exists hash blockchain.db) then raise BlockIsOrphan;
 
   (* Transaction list must be non-empty *)
   if (List.length block.block_transactions) = 0 then raise (Rejected ("bad-blk-length", RejectionInvalid));

@@ -233,6 +233,7 @@ let handle_block peer block =
     send_payload peer (GetBlocksPayload (construct_block_locator_list_message peer block.block_header.previous_block_hash))
   | Bitcoin_blockchain.BlockIsDuplicate ->
     debug_may peer (fun () -> Printf.printf "[INFO] block %s is a duplicate, not inserted\n" (Utils.hex_string_of_hash_string hash));
+    send_rejection peer "block" RejectionDuplicate "duplicate"
   | Bitcoin_blockchain.Rejected (reason, rejection_code) ->
     debug_may peer (fun () -> Printf.printf "[INFO] rejecting block %s: %s\n" (Utils.hex_string_of_hash_string hash) reason);
     (* send_rejection peer "block" rejection_code reason; *)
@@ -273,7 +274,7 @@ let handle_payload peer payload =
   | TxPayload p ->
     debug_may peer (fun () -> Bitcoin_protocol_pp.print_message_payload payload);
     discard ()
-  | BlockPayload p -> handle_block peer p
+  | BlockPayload p -> handle_block peer p; print_endline "";
   | HeadersPayload p -> discard ()
   | MemPoolPayload -> discard () (* we don't keep a memory pool yet *)
   | PingPayload p -> answer_ping peer p

@@ -490,7 +490,8 @@ let rec read_string_from_fd fd bytes =
   | 0 when (bytes > 0) -> raise Connection_closed
   | bytes_read when (bytes_read < bytes) ->
     String.sub received_string 0 bytes_read ^ (read_string_from_fd fd (bytes - bytes_read))
-  | bytes_read -> String.sub received_string 0 bytes_read
+  | bytes_read ->
+    String.sub received_string 0 bytes_read
 ;;
 
 let parse_header_from_fd fd =

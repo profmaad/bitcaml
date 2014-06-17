@@ -199,9 +199,7 @@ let retrieve_orphan hash db =
 ;;
 
 let orphan_exists hash db =
-  match retrieve_orphan hash db with
-  | None -> false
-  | Some x -> true
+  S.select_one db sql"SELECT @b{count(1)} FROM orphans WHERE hash = %s LIMIT 1" hash
 ;;
 
 let block_exists_anywhere hash db =
@@ -210,7 +208,7 @@ let block_exists_anywhere hash db =
 
 let delete_mempool_transaction db hash =
   S.execute db
-    sqlc"DELETE FROM memory_pool WHERE hash = %s" hash
+    sql"DELETE FROM memory_pool WHERE hash = %s" hash
 ;;
 
 let delete_block_transactions_from_mempool db block = 
@@ -219,14 +217,14 @@ let delete_block_transactions_from_mempool db block =
 
 let delete_utxo db hash index =
   S.execute db
-    sqlc"DELETE FROM unspent_transaction_outputs WHERE hash = %s AND output_index = %l"
+    sql"DELETE FROM unspent_transaction_outputs WHERE hash = %s AND output_index = %l"
     hash
     index
 ;;
 let insert_utxo db (hash, output_index, block, value, script, is_coinbase) =
   ignore (
     S.insert db
-      sqlc"INSERT INTO unspent_transaction_outputs(hash, output_index, block, value, script, is_coinbase) VALUES(%s, %l, %L, %L, %s, %b)"
+      sql"INSERT INTO unspent_transaction_outputs(hash, output_index, block, value, script, is_coinbase) VALUES(%s, %l, %L, %L, %s, %b)"
       hash
       output_index
       block
@@ -257,10 +255,12 @@ let update_utxo_with_transaction db block_id tx_index tx =
 ;;
 (* since a transaction can spend an output that only appeard in the same block, we have to handle transactions in order *)
 let update_utxo_with_block db block hash =
+  Printf.printf "[DB] starting UTxO update for block %s\n%!" (Utils.hex_string_of_hash_string hash);
   match block_id hash db with
   | None -> failwith "tried to update utxo for non-existant block"
   | Some block_id ->
-    List.iteri (update_utxo_with_transaction db block_id) block.block_transactions
+    List.iteri (update_utxo_with_transaction db block_id) block.block_transactions;
+    Printf.printf "[DB] finished UTxO update for block %s\n%!" (Utils.hex_string_of_hash_string hash);
 ;;
 
 let insert_block_into_blockchain hash previous_block_hash log_difficulty header db =
@@ -271,7 +271,7 @@ let insert_block_into_blockchain hash previous_block_hash log_difficulty header 
     | None -> InsertionFailed
     | Some (previous_block_id, _, previous_block_height, _, previous_block_cld, previous_is_main, _, _, _, _, _) ->
       let record_id = S.insert db
-	sqlc"INSERT INTO blockchain(hash, height, previous_block, cumulative_log_difficulty, is_main, block_version, merkle_root, timestamp, difficulty_bits, nonce) VALUES(%s, %L, %L, %f, %b, %d, %s, %L, %l, %l)" (* TODO: proper main chain handling *)
+	sql"INSERT INTO blockchain(hash, height, previous_block, cumulative_log_difficulty, is_main, block_version, merkle_root, timestamp, difficulty_bits, nonce) VALUES(%s, %L, %L, %f, %b, %d, %s, %L, %l, %l)" (* TODO: proper main chain handling *)
 	hash
 	(Int64.add previous_block_height 1L)
 	previous_block_id
@@ -291,7 +291,7 @@ let insert_block_as_orphan hash previous_block_hash log_difficulty header db =
   | true -> NotInsertedExisted
   | false ->
     let record_id = S.insert db
-      sqlc"INSERT INTO orphans(hash, previous_block_hash, log_difficulty, block_version, merkle_root, timestamp, difficulty_bits, nonce) VALUES(%s, %s, %f, %d, %s, %L, %l, %l)"
+      sql"INSERT INTO orphans(hash, previous_block_hash, log_difficulty, block_version, merkle_root, timestamp, difficulty_bits, nonce) VALUES(%s, %s, %f, %d, %s, %L, %l, %l)"
       hash
       previous_block_hash
       log_difficulty
@@ -310,7 +310,7 @@ let orphans_for_previous_block_hash db hash =
 ;;
 let delete_orphan_by_id db id =
   S.execute db
-    sqlc"DELETE FROM orphans WHERE id = %L"
+    sql"DELETE FROM orphans WHERE id = %L"
     id
 ;;
 
@@ -339,7 +339,7 @@ let insert_genesis_block db =
   let log_difficulty = log_difficulty_of_difficulty_bits header.block_difficulty_target in
   if not (block_exists hash db) then
     Some (S.insert db
-	    sqlc"INSERT INTO blockchain(hash, height, previous_block, cumulative_log_difficulty, is_main, block_version, merkle_root, timestamp, difficulty_bits, nonce) VALUES(%s, %L, %L, %f, 1, %d, %s, %L, %l, %l)"
+	    sql"INSERT INTO blockchain(hash, height, previous_block, cumulative_log_difficulty, is_main, block_version, merkle_root, timestamp, difficulty_bits, nonce) VALUES(%s, %L, %L, %f, 1, %d, %s, %L, %l, %l)"
 	    hash
 	    0L
 	    0L
