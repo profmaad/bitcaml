@@ -250,7 +250,7 @@ let handle_orphan_block blockchain header hash log_difficulty =
   | _ -> false
 ;;
 
-let handle_block blockchain time block =
+let rec handle_block blockchain time block =
   let header = block.block_header in
   let hash = Bitcoin_protocol_generator.block_hash header in
   let log_difficulty = DB.log_difficulty_of_difficulty_bits header.block_difficulty_target in
@@ -293,4 +293,18 @@ let handle_block blockchain time block =
     Printf.printf "[FATAL] chain reorganisation required, not implemented!";
     ignore (exit 1);
     insert_block ()
+
+(* For each orphan block for which this block is its prev, run all these steps (including this one) recursively on that orphan *)
+and resolve_orphans blockchain time inserted_hash =
+  let handle_orphan_block (id, hash, previous_block_hash, log_difficulty, block_version, merkle_root, timestamp, difficulty_bits, nonce) =
+    match Blockstorage.load_block blockchain.blockstorage hash with
+    | None ->
+      Printf.printf "[WARNING] failed to load orphan block %s from block storage\n" (Utils.hex_string_of_hash_string hash)
+    | Some orphan_block ->
+      handle_block blockchain time orphan_block;
+      DB.delete_orphan_by_id blockchain.db id
+  in
+
+  let resolved_orphans = DB.orphans_for_previous_block_hash blockchain.db inserted_hash in
+  List.iter handle_orphan_block resolved_orphans
 ;;

@@ -304,27 +304,14 @@ let insert_block_as_orphan hash previous_block_hash log_difficulty header db =
     InsertedAsOrphan record_id
 ;;
 
-let rec resolve_orphans inserted_hash db =
-  let resolve_orphan (id, hash, previous_block_hash, log_difficulty, block_version, merkle_root, timestamp, difficulty_bits, nonce) =
-    let header = {
-      block_version = block_version;
-      previous_block_hash = "";
-      merkle_root = merkle_root;
-      block_timestamp = Utils.unix_tm_of_int64 timestamp;
-      block_difficulty_target = difficulty_bits_of_int32 difficulty_bits;
-      block_nonce = nonce;
-    } in
-    match insert_block_into_blockchain hash previous_block_hash log_difficulty header db with
-    | InsertedIntoBlockchain _ ->
-      S.execute db
-	sqlc"DELETE FROM orphans WHERE id = %L"
-	id;
-      resolve_orphans hash db
-    | _ -> ()
-  in
-  S.iter db
-    resolve_orphan
-    sqlc"SELECT @L{id}, @s{hash}, @s{previous_block_hash}, @f{log_difficulty} @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce} FROM orphans WHERE previous_block_hash = %s" inserted_hash
+let orphans_for_previous_block_hash db hash =
+  S.select db
+    sqlc"SELECT @L{id}, @s{hash}, @s{previous_block_hash}, @f{log_difficulty} @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce} FROM orphans WHERE previous_block_hash = %s" hash
+;;
+let delete_orphan_by_id db id =
+  S.execute db
+    sqlc"DELETE FROM orphans WHERE id = %L"
+    id
 ;;
 
 let insert_block header db =
@@ -338,8 +325,6 @@ let insert_block header db =
       (* we know the previous block, we can insert this block into the chain *)
       match insert_block_into_blockchain hash header.previous_block_hash log_difficulty header db with
       | InsertedIntoBlockchain i as result ->
-	(* we inserted a new block into the blockchain, so we should check whether this resolved any dangling orphans *)
-	resolve_orphans hash db;
 	result
       | result -> result
     )

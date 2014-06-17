@@ -66,5 +66,6 @@ let store_block storage block =
 let load_block storage hash = 
   let file_path = path_of_hash storage hash in
   let block_bitstring = Bitstring.bitstring_of_file file_path in
-  Bitcoin_protocol_parser.parse_block block_bitstring
+  let block, _ = Bitcoin_protocol_parser.parse_block block_bitstring in
+  block
 ;;
