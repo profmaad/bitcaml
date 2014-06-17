@@ -32,13 +32,17 @@ let init_default path =
   }
 ;;
 
+let tx_total_output_value tx =
+  List.fold_left Int64.add 0L (List.map (fun txout -> txout.transaction_output_value) tx.transaction_outputs)
+;;
+
 (* tx rules 2-4 of https://en.bitcoin.it/wiki/Protocol_rules *)
 let verify_basic_transaction_rules tx =
   if (List.length tx.transaction_inputs) = 0 then raise (Rejected ("bad-txns-vin-empty", RejectionInvalid));
   if (List.length tx.transaction_outputs) = 0 then raise (Rejected ("bad-txns-vout-empty", RejectionInvalid));
   if ((Bitstring.bitstring_length (Bitcoin_protocol_generator.bitstring_of_transaction tx)) / 8) >= max_block_size then raise (Rejected ("bad-txns-oversize", RejectionInvalid));
   if not (List.for_all transaction_output_in_legal_money_range tx.transaction_outputs) then raise (Rejected ("bad-txns-vout-notlegalmoney", RejectionInvalid));
-  if not (legal_money_range (List.fold_left Int64.add 0L (List.map (fun txout -> txout.transaction_output_value) tx.transaction_outputs))) then raise (Rejected ("bad-txns-txouttotal-notlegalmoney", RejectionInvalid));
+  if not (legal_money_range (tx_total_output_value tx)) then raise (Rejected ("bad-txns-txouttotal-notlegalmoney", RejectionInvalid));
 ;;
 
 let scripts_of_transaction tx =
@@ -99,7 +103,7 @@ module TxOutMap = Map.Make(struct
   ;;
 end);;
 
-let verify_mainchain_txin blockchain height tx processed_txout txin_index txin =
+let verify_mainchain_txin_return_value blockchain height tx processed_txout txin_index txin =
   let spent_output =
     try Some (TxOutMap.find (txin.previous_transaction_output.referenced_transaction_hash, txin.previous_transaction_output.transaction_output_index) processed_txout) with
     | Not_found -> DB.retrieve_utxo blockchain.db txin.previous_transaction_output.referenced_transaction_hash txin.previous_transaction_output.transaction_output_index
@@ -122,30 +126,48 @@ let verify_mainchain_txin blockchain height tx processed_txout txin_index txin =
     
     (* Verify crypto signatures for each input; reject if any are bad *)
     verify_transaction_script (tx, txin_index) txin.signature_script output_script;
+
+    output_value
 ;;
-let verify_mainchain_tx blockchain height processed_txout tx =
-  List.iteri (verify_mainchain_txin blockchain height tx processed_txout) tx.transaction_inputs
-  (* Reject if the sum of input values < sum of output values *)
+let verify_mainchain_tx_return_fee blockchain height processed_txout tx =
+  let input_values = List.mapi (verify_mainchain_txin_return_value blockchain height tx processed_txout) tx.transaction_inputs in
+  let input_value = List.fold_left Int64.add 0L input_values in
+
+  let output_value = tx_total_output_value tx in
+
   (* Using the referenced output transactions to get input values, check that each input value, AS WELL AS THE SUM, are in legal money range *)
+  if not (legal_money_range input_value) then raise (Rejected ("bad-txns-txintotal-notlegalmoney", RejectionInvalid));
+  if not (legal_money_range output_value) then raise (Rejected ("bad-txns-txouttotal-notlegalmoney", RejectionInvalid));
+
+  (* Reject if the sum of input values < sum of output values *)
+  if(input_value < output_value) then raise (Rejected ("bad-txns-in-belowout", RejectionInvalid));
+
+  let tx_fee = Int64.sub output_value input_value in
+  if not (legal_money_range tx_fee) then raise (Rejected ("bad-txns-fee-outofrange", RejectionInvalid));
+
+  tx_fee
 ;;
 
 let verify_mainchain_block blockchain time block hash height =
   let txout_tuple_of_txout hash index txout =
     ((hash, Int32.of_int index), (Int64.of_int index, hash, Int32.of_int index, Int64.minus_one, txout.transaction_output_value, txout.output_script, false))
   in
-  let rec verify_mainchain_block_acc processed_txout = function
-    | [] -> ()
+  let rec verify_mainchain_block_acc_return_fees processed_txout tx_fees = function
+    | [] -> tx_fees
     | tx :: txs ->
-      verify_mainchain_tx blockchain height processed_txout tx;
+      let tx_fee = verify_mainchain_tx_return_fee blockchain height processed_txout tx in
       let hash = Bitcoin_protocol_generator.transaction_hash tx in
       let new_txouts = List.mapi (txout_tuple_of_txout hash) tx.transaction_outputs in
       let processed_txout = List.fold_left (fun acc (key, value) -> TxOutMap.add key value acc) processed_txout new_txouts in
       print_endline "//////////////";
-      verify_mainchain_block_acc processed_txout txs
+      verify_mainchain_block_acc_return_fees processed_txout (Int64.add tx_fees tx_fee) txs
   in
   
   let processed_txout = TxOutMap.empty in
-  verify_mainchain_block_acc processed_txout (List.tl block.block_transactions)
+  let tx_fees = verify_mainchain_block_acc_return_fees processed_txout 0L (List.tl block.block_transactions) in
+  let expected_coinbase_value = Int64.add (block_creation_fee_at_height height) tx_fees in
+  let actual_coinbase_value = tx_total_output_value (List.hd block.block_transactions) in
+  if actual_coinbase_value > expected_coinbase_value then raise (Rejected ("bad-cb-amount", RejectionInvalid));
 ;;
 
 let verify_block blockchain time block hash =
@@ -258,7 +280,8 @@ let handle_block blockchain time block =
 
   let height = Option.get (DB.block_height header.previous_block_hash blockchain.db) in
   match classify_block blockchain block with
-  | Sidechain -> insert_block () (* For case 2, adding to a side branch, we don't do anything. *)
+  (* For case 2, adding to a side branch, we don't do anything. *)
+  | Sidechain -> insert_block ()
   | Mainchain ->
     (* For case 1, adding to main branch: *)
     verify_mainchain_block blockchain time block hash height;

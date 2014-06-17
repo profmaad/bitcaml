@@ -8,6 +8,9 @@ let max_block_into_future = 2. *. 60. *. 60.;;
 let max_block_sigops = max_block_size / 50;;
 let difficulty_change_interval = 2016;;
 let timestamp_verification_predecessors = 11;;
+let initial_block_creation_fee_btc = 50L;;
+let initial_block_creation_fee = Int64.mul initial_block_creation_fee_btc coin_size;;
+let block_fee_reduction_interval = 210000L;;
 
 let legal_money_range i = (i >= 0L) && (i <= max_money);;
 
@@ -95,4 +98,9 @@ let transaction_output_in_legal_money_range txout = legal_money_range txout.tran
 let block_merkle_root_matches block =
   let calculated_merkle_root = merkle_root_of_block block in
   calculated_merkle_root = block.block_header.merkle_root
+;;
+
+let block_creation_fee_at_height height =
+  let reduction_intervals = Int64.to_int (Int64.div height block_fee_reduction_interval) in
+  Int64.shift_right_logical initial_block_creation_fee reduction_intervals
 ;;
