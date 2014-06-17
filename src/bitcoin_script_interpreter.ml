@@ -235,6 +235,13 @@ let binary_arithmetic_op_boolean_result f stack =
   Printf.printf "[DEBUG] binary_arithmetic_op_boolean_result op1: %Ld, op2: %Ld, result: %b\n" op1 op2 result;
   push_bool_arithmetic result stack
 ;;
+let binary_boolean_op_boolean_result f stack =
+  let op2 = pop_bool_arithmetic stack in
+  let op1 = pop_bool_arithmetic stack in
+  let result = f op1 op2 in
+  Printf.printf "[DEBUG] binary_boolean_op_boolean_result op1: %b, op2: %b, result: %b\n" op1 op2 result;
+  push_bool_arithmetic result stack
+;;
 
 let op_add stack = binary_arithmetic_op_int64_result Int64.add stack;;
 let op_sub stack = binary_arithmetic_op_int64_result Int64.sub stack;;
@@ -446,8 +453,8 @@ let execute_word stack altstack tx_data script_data = function
   | Mod -> raise Disabled_opcode
   | LShift -> raise Disabled_opcode
   | RShift -> raise Disabled_opcode
-  | BoolAnd -> push_bool_arithmetic ((pop_bool_arithmetic stack) && (pop_bool_arithmetic stack)) stack
-  | BoolOr -> push_bool_arithmetic ((pop_bool_arithmetic stack) || (pop_bool_arithmetic stack)) stack
+  | BoolAnd -> binary_boolean_op_boolean_result ( && ) stack
+  | BoolOr -> binary_boolean_op_boolean_result ( || ) stack
   | NumEqual -> binary_arithmetic_op_boolean_result ( = ) stack
   | NumEqualVerify -> binary_arithmetic_op_boolean_result ( = ) stack; op_verify stack
   | NumNotEqual -> binary_arithmetic_op_boolean_result ( <> ) stack
