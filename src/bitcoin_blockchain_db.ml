@@ -217,14 +217,14 @@ let delete_block_transactions_from_mempool db block =
 
 let delete_utxo db hash index =
   S.execute db
-    sql"DELETE FROM unspent_transaction_outputs WHERE hash = %s AND output_index = %l"
+    sqlc"DELETE FROM unspent_transaction_outputs WHERE hash = %s AND output_index = %l"
     hash
     index
 ;;
 let insert_utxo db (hash, output_index, block, value, script, is_coinbase) =
   ignore (
     S.insert db
-      sql"INSERT INTO unspent_transaction_outputs(hash, output_index, block, value, script, is_coinbase) VALUES(%s, %l, %L, %L, %s, %b)"
+      sqlc"INSERT INTO unspent_transaction_outputs(hash, output_index, block, value, script, is_coinbase) VALUES(%s, %l, %L, %L, %s, %b)"
       hash
       output_index
       block
@@ -259,7 +259,7 @@ let update_utxo_with_block db block hash =
   match block_id hash db with
   | None -> failwith "tried to update utxo for non-existant block"
   | Some block_id ->
-    List.iteri (update_utxo_with_transaction db block_id) block.block_transactions;
+    List.iteri (S.transaction db (fun db -> update_utxo_with_transaction db block_id)) block.block_transactions;
     Printf.printf "[DB] finished UTxO update for block %s\n%!" (Utils.hex_string_of_hash_string hash);
 ;;
 
