@@ -281,6 +281,7 @@ let rec handle_block blockchain time block =
   );
 
   let height = Option.get (DB.block_height header.previous_block_hash blockchain.db) in
+  let height = Int64.succ height in
   match classify_block blockchain block with
   (* For case 2, adding to a side branch, we don't do anything. *)
   | Sidechain -> insert_block ()
