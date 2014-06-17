@@ -142,7 +142,7 @@ let verify_mainchain_tx_return_fee blockchain height processed_txout tx =
   (* Reject if the sum of input values < sum of output values *)
   if(input_value < output_value) then raise (Rejected ("bad-txns-in-belowout", RejectionInvalid));
 
-  let tx_fee = Int64.sub output_value input_value in
+  let tx_fee = Int64.sub input_value output_value in
   if not (legal_money_range tx_fee) then raise (Rejected ("bad-txns-fee-outofrange", RejectionInvalid));
 
   tx_fee
@@ -263,7 +263,8 @@ let rec handle_block blockchain time block =
       Printf.printf "[DEBUG] inserted block %s into db as %Ld\n" (Utils.hex_string_of_hash_string hash) record_id
     | _ -> failwith "Block insertion failed at DB layer"
     );
-    Blockstorage.store_block blockchain.blockstorage block      
+    Blockstorage.store_block blockchain.blockstorage block;
+    resolve_orphans blockchain time hash
   in
 
   ( try verify_block blockchain time block hash with
@@ -296,7 +297,7 @@ let rec handle_block blockchain time block =
 
 (* For each orphan block for which this block is its prev, run all these steps (including this one) recursively on that orphan *)
 and resolve_orphans blockchain time inserted_hash =
-  let handle_orphan_block (id, hash, previous_block_hash, log_difficulty, block_version, merkle_root, timestamp, difficulty_bits, nonce) =
+  let resolve_orphan_block (id, hash, previous_block_hash, log_difficulty, block_version, merkle_root, timestamp, difficulty_bits, nonce) =
     match Blockstorage.load_block blockchain.blockstorage hash with
     | None ->
       Printf.printf "[WARNING] failed to load orphan block %s from block storage\n" (Utils.hex_string_of_hash_string hash)
@@ -306,5 +307,5 @@ and resolve_orphans blockchain time inserted_hash =
   in
 
   let resolved_orphans = DB.orphans_for_previous_block_hash blockchain.db inserted_hash in
-  List.iter handle_orphan_block resolved_orphans
+  List.iter resolve_orphan_block resolved_orphans
 ;;
