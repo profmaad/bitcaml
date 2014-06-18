@@ -101,6 +101,10 @@ type insertion_result =
 | NotInsertedExisted
 ;;
 
+let run_in_transaction db f =
+  S.transaction db f
+;;
+
 let retrieve_block_by_id id db =
   S.select_one_maybe db
     sqlc"SELECT @L{id}, @s{hash}, @L{height}, @L{previous_block}, @f{cumulative_log_difficulty}, @b{is_main}, @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce} FROM blockchain WHERE id = %L" id
@@ -191,6 +195,19 @@ let retrieve_n_predecessors hash n db =
   | None -> []
   | Some (id, _, _, _, _, _, _, _, _, _, _) ->
     List.rev (retrieve_n_predecessors_by_id_acc [] id n)
+;;
+
+let retrieve_sidechain_with_leaf db sidechain_hash =
+  let rec retrieve_sidechain_acc db acc sidechain_id =
+    match retrieve_block_by_id sidechain_id db with
+    | None -> None
+    | Some ((id, _, _, previous_block, _, is_main, _, _, _, _, _) as block) ->
+      if is_main then Some (acc, block)
+      else retrieve_sidechain_acc db (block :: acc) previous_block
+  in
+  match block_id sidechain_hash db with
+  | None -> None
+  | Some sidechain_id -> retrieve_sidechain_acc db [] sidechain_id
 ;;
 
 let retrieve_orphan hash db =

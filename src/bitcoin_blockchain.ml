@@ -227,6 +227,8 @@ let verify_block blockchain time block hash =
   ()
 ;;
 
+let rollback_block blockchain block = ();;
+
 (* 15. Add block into the tree. *)
 let classify_block blockchain block =
 
@@ -292,10 +294,14 @@ let rec handle_block blockchain time block =
     DB.update_utxo_with_block blockchain.db block hash
   | NewMainchain ->
     (* insert into db, then perform chain reorg *)
-    (* TODO: actually implement this *)
-    Printf.printf "[FATAL] chain reorganisation required, not implemented!";
-    ignore (exit 1);
-    insert_block ()
+    insert_block ();
+    match DB.retrieve_sidechain_with_leaf blockchain.db hash with
+    | None ->
+      Printf.printf "[FATAL] chain reorganisation required, but can't find mainchain ancestor of %s\n" (Utils.hex_string_of_hash_string hash);
+      failwith "mainchain ancestor of sidechain block not found"
+    | Some (sidechain, ((_, fork_hash, _, _, _, _, _, _, _, _, _) as forkblock)) ->
+      Printf.printf "[INFO] switching mainchain starting from %s to %s\n" (Utils.hex_string_of_hash_string fork_hash) (Utils.hex_string_of_hash_string hash);
+      DB.run_in_transaction blockchain.db (fun db -> reorganise_mainchain db blockchain forkblock sidechain)
 
 (* For each orphan block for which this block is its prev, run all these steps (including this one) recursively on that orphan *)
 and resolve_orphans blockchain time inserted_hash =
@@ -310,4 +316,9 @@ and resolve_orphans blockchain time inserted_hash =
 
   let resolved_orphans = DB.orphans_for_previous_block_hash blockchain.db inserted_hash in
   List.iter resolve_orphan_block resolved_orphans
+and reorganise_mainchain db blockchain forkblock sidechain =
+  (* rollback utxo via former mainchain blocks after forkblock *)
+  (* then handle_block each block in sidechain in order *)
+  (* if anything goes wrong, throw an exception and we rollback everything *)
+  ()
 ;;
