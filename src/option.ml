@@ -3,6 +3,11 @@ let may f = function
   | Some x -> f x
 ;;
 
+let map f = function
+  | None -> None
+  | Some x -> Some (f x)
+;;
+
 let default default_value = function
   | None -> default_value
   | Some x -> x
