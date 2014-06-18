@@ -56,20 +56,20 @@ let scripts_of_block block =
 ;;
 
 let verify_difficulty_change blockchain hash previous_hash header =
-  match DB.nth_predecessor previous_hash (Int64.of_int (difficulty_change_interval - 1)) blockchain.db with
+  match DB.nth_predecessor blockchain.db previous_hash (Int64.of_int (difficulty_change_interval - 1)) with
   | None -> raise (Rejected ("bad-diffbits", RejectionInvalid))
-  | Some (_, _, _, _, _, _, _, _, timestamp, difficulty_bits, _) ->
-    let actual_timespan = Utils.time_difference header.block_timestamp (Utils.unix_tm_of_int64 timestamp) in
-    let old_difficulty = DB.difficulty_of_difficulty_bits (difficulty_bits_of_int32 difficulty_bits) in
+  | Some block ->
+    let actual_timespan = Utils.time_difference header.block_timestamp block.DB.Block.block_header.block_timestamp in
+    let old_difficulty = DB.difficulty_of_difficulty_bits block.DB.Block.block_header.block_difficulty_target in
     let new_difficulty = expected_new_difficulty old_difficulty actual_timespan in
     let claimed_new_difficulty = DB.difficulty_of_difficulty_bits header.block_difficulty_target in
     if new_difficulty <> claimed_new_difficulty then raise (Rejected ("bad-diffbits", RejectionInvalid))
 ;;
 
 let validate_block_timestamp blockchain hash header =
-  let extract_timestamp (_, _, _, _, _, _, _, _, timestamp, _, _) = timestamp in
-  let predecessors = DB.retrieve_n_predecessors header.previous_block_hash (timestamp_verification_predecessors - 1) blockchain.db in
-  let predecessors = (Option.get (DB.retrieve_block header.previous_block_hash blockchain.db)) :: predecessors in
+  let extract_timestamp block = Utils.int64_of_unix_tm block.DB.Block.block_header.block_timestamp in
+  let predecessors = DB.retrieve_n_predecessors blockchain.db header.previous_block_hash (timestamp_verification_predecessors - 1) in
+  let predecessors = (Option.get (DB.Block.retrieve_by_hash blockchain.db header.previous_block_hash)) :: predecessors in
   if (List.length predecessors) = 0 then false
   else
     let sorted_timestamps = List.sort compare (List.map extract_timestamp predecessors) in
@@ -81,13 +81,13 @@ let verify_transaction_script (tx, txin_index) signature_script output_script =
   let signature_script_asm = Bitcoin_script_parser.parse_script (Bitstring.bitstring_of_string signature_script) in
   let output_script_asm = Bitcoin_script_parser.parse_script (Bitstring.bitstring_of_string output_script) in
   let script_asm = signature_script_asm @ (Bitcoin_script.CodeSeparator :: output_script_asm) in
-  Printf.printf "[DEBUG] verifying script for txin %d:\n" txin_index;
-  Bitcoin_script_pp.print_script script_asm;
+  (* Printf.printf "[DEBUG] verifying script for txin %d:\n" txin_index; *)
+  (* Bitcoin_script_pp.print_script script_asm; *)
 
   let result = Bitcoin_script_interpreter.execute_script script_asm (tx, txin_index) in
   match result with
   | Bitcoin_script_interpreter.Result item ->
-    Printf.printf "[DEBUG] script result: %s\n" (Bitcoin_script_pp.pp_string_of_data_item item);
+    (* Printf.printf "[DEBUG] script result: %s\n" (Bitcoin_script_pp.pp_string_of_data_item item); *)
     if not (Bitcoin_script.bool_of_data_item item) then raise (Rejected ("mandatory-script-verify-flag-failed", RejectionInvalid))
   | Bitcoin_script_interpreter.Invalid -> raise (Rejected ("mandatory-script-verify-flag-failed", RejectionInvalid))
 ;;
@@ -106,28 +106,28 @@ end);;
 let verify_mainchain_txin_return_value blockchain height tx processed_txout txin_index txin =
   let spent_output =
     try Some (TxOutMap.find (txin.previous_transaction_output.referenced_transaction_hash, txin.previous_transaction_output.transaction_output_index) processed_txout) with
-    | Not_found -> DB.retrieve_utxo blockchain.db txin.previous_transaction_output.referenced_transaction_hash txin.previous_transaction_output.transaction_output_index
+    | Not_found -> DB.UTxO.retrieve_by_hash_and_index blockchain.db txin.previous_transaction_output.referenced_transaction_hash txin.previous_transaction_output.transaction_output_index
   in
 
   match spent_output with
   | None -> raise (Rejected ("bad-txns-inputs-missingorspent", RejectionInvalid))
-  | Some (id, output_hash, output_index, block_id, output_value, output_script, output_is_coinbase) ->
+  | Some utxo ->
     (* For each input, if the referenced output transaction is coinbase (i.e. only 1 input, with hash=0, n=-1), it must have at least COINBASE_MATURITY (100) confirmations; else reject. *)
-    if output_is_coinbase then (
-      if block_id < 0L then raise (Rejected ("bad-txns-premature-spend-of-coinbase", RejectionInvalid)) (* this indicates that the coinbase to spent is in the same block as this transation .. naughty naughty *)
+    if utxo.DB.UTxO.is_coinbase then (
+      if utxo.DB.UTxO.block_id < 0L then raise (Rejected ("bad-txns-premature-spend-of-coinbase", RejectionInvalid)) (* this indicates that the coinbase to spent is in the same block as this transation .. naughty naughty *)
       else
-	match DB.block_height_by_id block_id blockchain.db with
+	match DB.Block.retrieve blockchain.db utxo.DB.UTxO.block_id with
 	| None -> raise (Rejected ("bad-txns-premature-spend-of-coinbase", RejectionInvalid))
-	| Some spent_block_height -> if (Int64.sub height spent_block_height) < coinbase_maturity then raise (Rejected ("bad-txns-premature-spend-of-coinbase", RejectionInvalid))
+	| Some spent_block -> if (Int64.sub height spent_block.DB.Block.height) < coinbase_maturity then raise (Rejected ("bad-txns-premature-spend-of-coinbase", RejectionInvalid))
     );
 
     (* Using the referenced output transactions to get input values, check that each input value, as well as the sum, are in legal money range *)
-    if not (legal_money_range output_value) then raise (Rejected ("bad-txns-inputvalues-outofrange", RejectionInvalid));
+    if not (legal_money_range utxo.DB.UTxO.value) then raise (Rejected ("bad-txns-inputvalues-outofrange", RejectionInvalid));
     
     (* Verify crypto signatures for each input; reject if any are bad *)
-    verify_transaction_script (tx, txin_index) txin.signature_script output_script;
+    verify_transaction_script (tx, txin_index) txin.signature_script utxo.DB.UTxO.script;
 
-    output_value
+    utxo.DB.UTxO.value
 ;;
 let verify_mainchain_tx_return_fee blockchain height processed_txout tx =
   let input_values = List.mapi (verify_mainchain_txin_return_value blockchain height tx processed_txout) tx.transaction_inputs in
@@ -149,17 +149,25 @@ let verify_mainchain_tx_return_fee blockchain height processed_txout tx =
 ;;
 
 let verify_mainchain_block blockchain time block hash height =
-  let txout_tuple_of_txout hash index txout =
-    ((hash, Int32.of_int index), (Int64.of_int index, hash, Int32.of_int index, Int64.minus_one, txout.transaction_output_value, txout.output_script, false))
+  let utxo_tuple_of_txout hash index txout =
+    ((hash, Int32.of_int index), {
+      DB.UTxO.id = 0L;
+      hash = hash;
+      output_index = Int32.of_int index;
+      block_id = Int64.minus_one;
+      value = txout.transaction_output_value;
+      script = txout.output_script;
+      is_coinbase = false;
+    })
   in
   let rec verify_mainchain_block_acc_return_fees processed_txout tx_fees = function
     | [] -> tx_fees
     | tx :: txs ->
       let tx_fee = verify_mainchain_tx_return_fee blockchain height processed_txout tx in
       let hash = Bitcoin_protocol_generator.transaction_hash tx in
-      let new_txouts = List.mapi (txout_tuple_of_txout hash) tx.transaction_outputs in
+      let new_txouts = List.mapi (utxo_tuple_of_txout hash) tx.transaction_outputs in
       let processed_txout = List.fold_left (fun acc (key, value) -> TxOutMap.add key value acc) processed_txout new_txouts in
-      print_endline "//////////////";
+      (* print_endline "//////////////"; *)
       verify_mainchain_block_acc_return_fees processed_txout (Int64.add tx_fees tx_fee) txs
   in
   
@@ -174,8 +182,8 @@ let verify_block blockchain time block hash =
   let previous_hash = block.block_header.previous_block_hash in
 
   (* Reject if duplicate of block we have in any of the three categories *)
-  if (DB.block_exists hash blockchain.db) then raise (Rejected ("duplicate", RejectionDuplicate));
-  if (DB.orphan_exists hash blockchain.db) then raise BlockIsOrphan;
+  if (DB.Block.hash_exists blockchain.db hash) then raise (Rejected ("duplicate", RejectionDuplicate));
+  if (DB.Orphan.hash_exists blockchain.db hash) then raise BlockIsOrphan;
 
   (* Transaction list must be non-empty *)
   if (List.length block.block_transactions) = 0 then raise (Rejected ("bad-blk-length", RejectionInvalid));
@@ -206,12 +214,10 @@ let verify_block blockchain time block hash =
   (* Verify Merkle hash *)
   if not (block_merkle_root_matches block) then raise (Rejected ("bad-txnmrklroot", RejectionInvalid));
 
-  let previous_block = DB.retrieve_block previous_hash blockchain.db in
-  (* TODO: Don't use an exception here, but instead redesign block insertion... *)
   (* 11. Check if prev block (matching prev hash) is in main branch or side branches. If not, add this to orphan blocks, then query peer we got this from for 1st missing orphan block in prev chain; done with block *)
-  if Option.is_none previous_block then raise BlockIsOrphan;
+  if not (DB.Block.hash_exists blockchain.db previous_hash) then raise BlockIsOrphan;
 
-  let previous_block_height = Option.get (DB.block_height previous_hash blockchain.db) in
+  let previous_block_height = (Option.get (DB.Block.retrieve_by_hash blockchain.db previous_hash)).DB.Block.height in
   
   (* 12. Check that nBits value matches the difficulty rules *)
   (* we know it must exist because we just checked it - at least as long as there is no concurrency *)
@@ -232,13 +238,13 @@ let rollback_block blockchain block = ();;
 (* 15. Add block into the tree. *)
 let classify_block blockchain block =
 
-  let (_, _, _, _, previous_block_cld, previous_is_main, _, _, _, _, _) = Option.get (DB.retrieve_block block.block_header.previous_block_hash blockchain.db) in
-  let current_highest_cld = DB.mainchain_cumulative_log_difficulty blockchain.db in
-  if Option.is_none current_highest_cld then failwith "No mainchain difficulty available, something is wrong with the blockchain..";
-  let block_cld = (DB.log_difficulty_of_difficulty_bits block.block_header.block_difficulty_target) +. previous_block_cld in
+  let previous_block = Option.get (DB.Block.retrieve_by_hash blockchain.db block.block_header.previous_block_hash) in
+  let current_mainchain_tip = DB.Block.retrieve_mainchain_tip blockchain.db in
+  if Option.is_none current_mainchain_tip then failwith "No mainchain tip available, something is wrong with the blockchain..";
+  let block_cld = (DB.log_difficulty_of_difficulty_bits block.block_header.block_difficulty_target) +. previous_block.DB.Block.cumulative_log_difficulty in
 
   (* There are three cases: *)
-  match previous_is_main, Option.get current_highest_cld, block_cld with
+  match previous_block.DB.Block.is_main, (Option.get current_mainchain_tip).DB.Block.cumulative_log_difficulty, block_cld with
   (* 1. block further extends the main branch *)
   | true, _, _ -> Mainchain
   (* 3. block extends a side branch and makes it the new main branch. *)
@@ -282,7 +288,7 @@ let rec handle_block blockchain time block =
     raise (Rejected (reason, rejection_code));
   );
 
-  let height = Option.get (DB.block_height header.previous_block_hash blockchain.db) in
+  let height = (Option.get (DB.Block.retrieve_by_hash blockchain.db header.previous_block_hash)).DB.Block.height in
   let height = Int64.succ height in
   match classify_block blockchain block with
   (* For case 2, adding to a side branch, we don't do anything. *)
@@ -299,22 +305,22 @@ let rec handle_block blockchain time block =
     | None ->
       Printf.printf "[FATAL] chain reorganisation required, but can't find mainchain ancestor of %s\n" (Utils.hex_string_of_hash_string hash);
       failwith "mainchain ancestor of sidechain block not found"
-    | Some (sidechain, ((_, fork_hash, _, _, _, _, _, _, _, _, _) as forkblock)) ->
-      Printf.printf "[INFO] switching mainchain starting from %s to %s\n" (Utils.hex_string_of_hash_string fork_hash) (Utils.hex_string_of_hash_string hash);
+    | Some (sidechain, forkblock) ->
+      Printf.printf "[INFO] switching mainchain starting from %s to %s\n" (Utils.hex_string_of_hash_string forkblock.DB.Block.hash) (Utils.hex_string_of_hash_string hash);
       DB.run_in_transaction blockchain.db (fun db -> reorganise_mainchain db blockchain forkblock sidechain)
 
 (* For each orphan block for which this block is its prev, run all these steps (including this one) recursively on that orphan *)
 and resolve_orphans blockchain time inserted_hash =
-  let resolve_orphan_block (id, hash, previous_block_hash, log_difficulty, block_version, merkle_root, timestamp, difficulty_bits, nonce) =
-    match Blockstorage.load_block blockchain.blockstorage hash with
+  let resolve_orphan_block orphan_db_block =
+    match Blockstorage.load_block blockchain.blockstorage orphan_db_block.DB.Orphan.hash with
     | None ->
-      Printf.printf "[WARNING] failed to load orphan block %s from block storage\n" (Utils.hex_string_of_hash_string hash)
+      Printf.printf "[WARNING] failed to load orphan block %s from block storage\n" (Utils.hex_string_of_hash_string orphan_db_block.DB.Orphan.hash)
     | Some orphan_block ->
       handle_block blockchain time orphan_block;
-      DB.delete_orphan_by_id blockchain.db id
+      DB.Orphan.delete blockchain.db orphan_db_block.DB.Orphan.id
   in
 
-  let resolved_orphans = DB.orphans_for_previous_block_hash blockchain.db inserted_hash in
+  let resolved_orphans = DB.Orphan.retrieve_by_previous_block_hash blockchain.db inserted_hash in
   List.iter resolve_orphan_block resolved_orphans
 and reorganise_mainchain db blockchain forkblock sidechain =
   (* rollback utxo via former mainchain blocks after forkblock *)

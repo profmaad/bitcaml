@@ -105,248 +105,357 @@ let run_in_transaction db f =
   S.transaction db f
 ;;
 
-let retrieve_block_by_id id db =
-  S.select_one_maybe db
-    sqlc"SELECT @L{id}, @s{hash}, @L{height}, @L{previous_block}, @f{cumulative_log_difficulty}, @b{is_main}, @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce} FROM blockchain WHERE id = %L" id
-;;
-let retrieve_block hash db =
-  S.select_one_maybe db
-    sqlc"SELECT @L{id}, @s{hash}, @L{height}, @L{previous_block}, @f{cumulative_log_difficulty}, @b{is_main}, @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce} FROM blockchain WHERE hash = %s" hash
-;;
-let retrieve_block_at_height height db =
-  S.select_one_maybe db
-    sqlc"SELECT @L{id}, @s{hash}, @L{height}, @L{previous_block}, @f{cumulative_log_difficulty}, @b{is_main}, @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce} FROM blockchain WHERE height = %L ORDER BY cumulative_log_difficulty DESC" height
-;;
-let retrieve_mainchain_block_at_height height db =
-  S.select_one_maybe db
-    sqlc"SELECT @L{id}, @s{hash}, @L{height}, @L{previous_block}, @f{cumulative_log_difficulty}, @b{is_main}, @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce} FROM blockchain WHERE height = %L AND is_main = 1 ORDER BY cumulative_log_difficulty DESC" height
-;;
+module Block = struct
+  type db_block = {
+    id : int64;
+    hash : string;
+    height: int64;
+    cumulative_log_difficulty : float;
+    previous_block_id : int64;
+    is_main : bool;
+    block_header : block_header;
+  };;
+  type t = db_block;;
 
-let block_id hash db =
-  match retrieve_block hash db with
-  | None -> None
-  | Some (id, _, _, _, _, _, _, _, _, _, _) -> Some id
-;;
-let block_height hash db =
-  match retrieve_block hash db with
-  | None -> None
-  | Some (_, _, height, _, _, _, _, _, _, _, _) -> Some height
-;;
-let block_height_by_id id db =
-  match retrieve_block_by_id id db with
-  | None -> None
-  | Some (_, _, height, _, _, _, _, _, _, _, _) -> Some height
-;;
-let block_cumulative_log_difficulty hash db =
-  match retrieve_block hash db with
-  | None -> None
-  | Some (_, _, _, _, cld, _, _, _, _, _, _) -> Some cld
-;;
+  let from_result (id, hash, height, previous_block, cld, is_main, block_version, merkle_root, timestamp, difficulty_bits, nonce, previous_block_hash) =
+    {
+      id = id;
+      hash = hash;
+      height = height;
+      cumulative_log_difficulty = cld;
+      previous_block_id = previous_block;
+      is_main = is_main;
+      block_header = {
+	block_version = block_version;
+	previous_block_hash = previous_block_hash;
+	merkle_root = merkle_root;
+	block_timestamp = Utils.unix_tm_of_int64 timestamp;
+	block_difficulty_target = difficulty_bits_of_int32 difficulty_bits;
+	block_nonce = nonce;
+      };
+    }
+  ;;
 
-let block_exists hash db =
-  match retrieve_block hash db with
-  | None -> false
-  | Some x -> true
-;;
+  let retrieve db id =
+    let result = S.select_one_maybe db
+      sqlc"SELECT @L{id}, @s{hash}, @L{height}, @L{previous_block}, @f{cumulative_log_difficulty}, @b{is_main}, @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce}, @s{IFNULL((SELECT hash FROM blockchain WHERE id = previous_block LIMIT 1), X'0000000000000000000000000000000000000000000000000000000000000000')} FROM blockchain WHERE id = %L"
+      id
+    in
+    Option.map from_result result
+  ;;
+  let retrieve_by_hash db hash =
+    let result = S.select_one_maybe db
+      sqlc"SELECT @L{id}, @s{hash}, @L{height}, @L{previous_block}, @f{cumulative_log_difficulty}, @b{is_main}, @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce}, @s{IFNULL((SELECT hash FROM blockchain WHERE id = previous_block LIMIT 1), X'0000000000000000000000000000000000000000000000000000000000000000')} FROM blockchain WHERE hash = %s"
+      hash
+    in
+    Option.map from_result result
+  ;;
+  let retrieve_mainchain_tip db =
+    let result = S.select_one_maybe db
+      sqlc"SELECT @L{id}, @s{hash}, @L{height}, @L{previous_block}, @f{cumulative_log_difficulty}, @b{is_main}, @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce}, @s{IFNULL((SELECT hash FROM blockchain WHERE id = previous_block LIMIT 1), X'0000000000000000000000000000000000000000000000000000000000000000')} FROM blockchain WHERE is_main = 1 ORDER BY cumulative_log_difficulty DESC, height DESC"
+    in
+    Option.map from_result result
+  ;;
+  let retrieve_mainchain_block_at_height db height =
+    let result = S.select_one_maybe db
+    sqlc"SELECT @L{id}, @s{hash}, @L{height}, @L{previous_block}, @f{cumulative_log_difficulty}, @b{is_main}, @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce}, @s{IFNULL((SELECT hash FROM blockchain WHERE id = previous_block LIMIT 1), X'0000000000000000000000000000000000000000000000000000000000000000')} FROM blockchain WHERE height = %L AND is_main = 1 ORDER BY cumulative_log_difficulty DESC"
+    height
+    in
+    Option.map from_result result
+  ;;
 
-let retrieve_highest_cld_block db =
-  S.select_one_maybe db
-    sqlc"SELECT @L{id}, @s{hash}, @L{height}, @L{previous_block}, @f{cumulative_log_difficulty}, @b{is_main}, @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce} FROM blockchain ORDER BY cumulative_log_difficulty DESC, height DESC"
-;;
+  let hash_exists db hash =
+    S.select_one db sql"SELECT @b{count(1)} FROM blockchain WHERE hash = %s LIMIT 1" hash
+  ;;
 
-let mainchain_height db =
-  match retrieve_highest_cld_block db with
-  | None -> 0L
-  | Some (_, _, height, _, _, _, _, _, _, _, _) -> height
-;;
-let mainchain_cumulative_log_difficulty db =
-  match retrieve_highest_cld_block db with
+  let insert db db_block =
+    S.insert db
+      sql"INSERT INTO blockchain(hash, height, previous_block, cumulative_log_difficulty, is_main, block_version, merkle_root, timestamp, difficulty_bits, nonce) VALUES(%s, %L, %L, %f, %b, %d, %s, %L, %l, %l)" 
+      db_block.hash
+      db_block.height
+      db_block.previous_block_id
+      db_block.cumulative_log_difficulty
+      db_block.is_main
+      db_block.block_header.block_version
+      db_block.block_header.merkle_root
+      (Utils.int64_of_unix_tm db_block.block_header.block_timestamp)
+      (int32_of_difficulty_bits db_block.block_header.block_difficulty_target)
+      db_block.block_header.block_nonce
+  ;;    
+end
+
+module Orphan = struct
+  type db_orphan = {
+    id : int64;
+    hash : string;
+    previous_block_hash : string;
+    log_difficulty : float;
+    block_header : block_header;
+  };;
+  type t = db_orphan;;
+
+  let from_result (id, hash, previous_block_hash, log_difficulty, block_version, merkle_root, timestamp, difficulty_bits, nonce) =
+    {
+      id = id;
+      hash = hash;
+      previous_block_hash = previous_block_hash;
+      log_difficulty = log_difficulty;
+      block_header = {
+	block_version = block_version;
+	previous_block_hash = previous_block_hash;
+	merkle_root = merkle_root;
+	block_timestamp = Utils.unix_tm_of_int64 timestamp;
+	block_difficulty_target = difficulty_bits_of_int32 difficulty_bits;
+	block_nonce = nonce;
+      };
+    }
+  ;;
+  
+  let retrieve db id =
+    let result = S.select_one_maybe db
+      sqlc"SELECT @L{id}, @s{hash}, @s{previous_block_hash}, @f{log_difficulty}, @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce} FROM orphans WHERE id = %L"
+      id
+    in
+    Option.map from_result result
+  ;;
+  let retrieve_by_hash db hash =
+    let result = S.select_one_maybe db
+      sqlc"SELECT @L{id}, @s{hash}, @s{previous_block_hash}, @f{log_difficulty}, @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce} FROM orphans WHERE hash = %s"
+      hash
+    in
+    Option.map from_result result
+  ;;
+  let retrieve_by_previous_block_hash db previous_block_hash =
+    let results = S.select db
+      sqlc"SELECT @L{id}, @s{hash}, @s{previous_block_hash}, @f{log_difficulty} @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce} FROM orphans WHERE previous_block_hash = %s"
+      previous_block_hash
+    in
+    List.map from_result results
+  ;;
+
+  let hash_exists db hash =
+    S.select_one db sql"SELECT @b{count(1)} FROM orphans WHERE hash = %s LIMIT 1" hash
+  ;;
+
+  let insert db db_orphan =
+    S.insert db
+      sql"INSERT INTO orphans(hash, previous_block_hash, log_difficulty, block_version, merkle_root, timestamp, difficulty_bits, nonce) VALUES(%s, %s, %f, %d, %s, %L, %l, %l)"
+      db_orphan.hash
+      db_orphan.previous_block_hash
+      db_orphan.log_difficulty
+      db_orphan.block_header.block_version
+      db_orphan.block_header.merkle_root
+      (Utils.int64_of_unix_tm db_orphan.block_header.block_timestamp)
+      (int32_of_difficulty_bits db_orphan.block_header.block_difficulty_target)
+      db_orphan.block_header.block_nonce
+  ;;
+
+  let delete db id =
+    S.execute db sql"DELETE FROM orphans WHERE id = %L" id
+  ;;
+
+end
+
+module UnspentTransactionOutput = struct
+  type db_unspent_transaction_output = {
+    id : int64;
+    hash : string;
+    output_index : int32;
+    block_id : int64;
+    value : int64;
+    script : string;
+    is_coinbase : bool;
+  };;
+  type t = db_unspent_transaction_output;;
+
+  let from_result (id, hash, output_index, block, value, script, is_coinbase) =
+    {
+      id = id;
+      hash = hash;
+      output_index = output_index;
+      block_id = block;
+      value = value;
+      script = script;
+      is_coinbase = is_coinbase;
+    }
+    ;;
+
+  let retrieve_by_hash_and_index db hash output_index = 
+    let result = S.select_one_maybe db
+      sqlc"SELECT @L{id}, @s{hash}, @l{output_index}, @L{block}, @L{value}, @s{script}, @b{is_coinbase} FROM unspent_transaction_outputs WHERE hash = %s AND output_index = %l"
+      hash
+      output_index
+    in
+    Option.map from_result result
+  ;;
+  
+  let delete_by_hash_and_index db hash index =
+    S.execute db
+      sqlc"DELETE FROM unspent_transaction_outputs WHERE hash = %s AND output_index = %l"
+      hash
+      index
+  ;;
+
+  let insert db utxo =
+    S.insert db
+      sqlc"INSERT INTO unspent_transaction_outputs(hash, output_index, block, value, script, is_coinbase) VALUES(%s, %l, %L, %L, %s, %b)"
+      utxo.hash
+      utxo.output_index
+      utxo.block_id
+      utxo.value
+      utxo.script
+      utxo.is_coinbase
+  ;;
+end
+module UTxO = UnspentTransactionOutput;;
+
+module MemoryPool = struct
+  type db_transaction = {
+    id : int64;
+    hash : string;
+    output_count : int32;
+    is_orphan : bool;
+    data : string;
+  };;
+  type t = db_transaction;;
+
+  let from_result (id, hash, output_count, is_orphan, data) =
+    {
+      id = id;
+      hash = hash;
+      output_count = output_count;
+      is_orphan = is_orphan;
+      data = data;
+    }
+  ;;
+
+  let retrieve_by_hash db hash  = 
+    let result = S.select_one_maybe db
+      sqlc"SELECT @L{id}, @s{hash}, @l{output_count}, @b{is_orphan}, @S{data} FROM memory_pool WHERE hash = %s"
+      hash
+    in
+    Option.map from_result result
+  ;;
+
+  let delete_by_hash db hash =
+    S.execute db sql"DELETE FROM memory_pool WHERE hash = %s" hash
+  ;;
+end
+
+let rec nth_predecessor_by_id db id n =
+  match Block.retrieve db id with
   | None -> None
-  | Some (_, _, _, _, cld, _, _, _, _, _, _) -> Some cld
-;;
-
-let rec nth_predecessor_by_id id n db =
-  match retrieve_block_by_id id db with
-  | None -> None
-  | (Some (id, _, height, previous_block_id, _, is_main, _, _, _, _, _)) as block ->
-    if n = 0L then block
+  | Some block ->
+    if n = 0L then Some block
     else
-      if is_main then
-	retrieve_mainchain_block_at_height (max 0L (Int64.sub height n)) db
+      if block.Block.is_main then
+	Block.retrieve_mainchain_block_at_height db (max 0L (Int64.sub block.Block.height n))
       else
-	nth_predecessor_by_id previous_block_id (Int64.sub n 1L) db
+	nth_predecessor_by_id db block.Block.previous_block_id (Int64.sub n 1L)
 ;;
-let nth_predecessor hash n db =
-  match retrieve_block hash db with
+let nth_predecessor db hash n =
+  match Block.retrieve_by_hash db hash with
   | None -> None
-  | Some (id, _, _, _, _, _, _, _, _, _, _) -> nth_predecessor_by_id id n db
+  | Some block -> nth_predecessor_by_id db block.Block.id n
 ;;
 
-let retrieve_n_predecessors hash n db =
+let retrieve_n_predecessors db hash n =
   let rec retrieve_n_predecessors_by_id_acc acc id n =
     if n = 0 then acc
     else
-      match retrieve_block_by_id id db with
+      match Block.retrieve db id with
       | None -> acc
-      | Some ((_, _, _, previous_block_id, _, _, _, _, _, _, _) as block) ->
-	retrieve_n_predecessors_by_id_acc (block :: acc) previous_block_id (n - 1)
+      | Some block ->
+	retrieve_n_predecessors_by_id_acc (block :: acc) block.Block.previous_block_id (n - 1)
   in
-  match retrieve_block hash db with
+  match Block.retrieve_by_hash db hash with
   | None -> []
-  | Some (id, _, _, _, _, _, _, _, _, _, _) ->
-    List.rev (retrieve_n_predecessors_by_id_acc [] id n)
+  | Some block ->
+    List.rev (retrieve_n_predecessors_by_id_acc [] block.Block.id n)
 ;;
 
 let retrieve_sidechain_with_leaf db sidechain_hash =
   let rec retrieve_sidechain_acc db acc sidechain_id =
-    match retrieve_block_by_id sidechain_id db with
+    match Block.retrieve db sidechain_id with
     | None -> None
-    | Some ((id, _, _, previous_block, _, is_main, _, _, _, _, _) as block) ->
-      if is_main then Some (acc, block)
-      else retrieve_sidechain_acc db (block :: acc) previous_block
+    | Some block ->
+      if block.Block.is_main then Some (acc, block)
+      else retrieve_sidechain_acc db (block :: acc) block.Block.previous_block_id
   in
-  match block_id sidechain_hash db with
+  match Block.retrieve_by_hash db sidechain_hash with
   | None -> None
-  | Some sidechain_id -> retrieve_sidechain_acc db [] sidechain_id
+  | Some block -> retrieve_sidechain_acc db [] block.Block.id
 ;;
 
-let retrieve_orphan hash db =
-  S.select_one_maybe db
-    sqlc"SELECT @L{id}, @s{hash}, @s{previous_block_hash}, @f{log_difficulty}, @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce} FROM orphans WHERE hash = %s" hash
-;;
-
-let orphan_exists hash db =
-  S.select_one db sql"SELECT @b{count(1)} FROM orphans WHERE hash = %s LIMIT 1" hash
-;;
-
-let block_exists_anywhere hash db =
-  (block_exists hash db) || (orphan_exists hash db)
-;;
-
-let delete_mempool_transaction db hash =
-  S.execute db
-    sql"DELETE FROM memory_pool WHERE hash = %s" hash
+let block_exists_anywhere db hash =
+  (Block.hash_exists db hash) || (Orphan.hash_exists db hash)
 ;;
 
 let delete_block_transactions_from_mempool db block = 
-  List.iter (delete_mempool_transaction db) (List.map Bitcoin_protocol_generator.transaction_hash block.block_transactions)
-;;
-
-let delete_utxo db hash index =
-  S.execute db
-    sqlc"DELETE FROM unspent_transaction_outputs WHERE hash = %s AND output_index = %l"
-    hash
-    index
-;;
-let insert_utxo db (hash, output_index, block, value, script, is_coinbase) =
-  ignore (
-    S.insert db
-      sqlc"INSERT INTO unspent_transaction_outputs(hash, output_index, block, value, script, is_coinbase) VALUES(%s, %l, %L, %L, %s, %b)"
-      hash
-      output_index
-      block
-      value
-      script
-      is_coinbase
-  )
-;;
-let retrieve_utxo db hash index =
-  S.select_one_maybe db
-    sqlc"SELECT @L{id}, @s{hash}, @l{output_index}, @L{block}, @L{value}, @s{script}, @b{is_coinbase} FROM unspent_transaction_outputs WHERE hash = %s AND output_index = %l"
-    hash
-    index
+  List.iter (MemoryPool.delete_by_hash db) (List.map Bitcoin_protocol_generator.transaction_hash block.block_transactions)
 ;;
 
 let update_utxo_with_transaction db block_id tx_index tx =
   let hash = Bitcoin_protocol_generator.transaction_hash tx in
 
   let outpoint_of_txout txout_index txout = 
-    (hash, Int32.of_int txout_index, block_id, txout.transaction_output_value, txout.output_script, tx_index = 0)
+    {
+      UTxO.id = 0L;
+      hash = hash;
+      output_index = Int32.of_int txout_index;
+      block_id = block_id;
+      value = txout.transaction_output_value;
+      script = txout.output_script;
+      is_coinbase = (tx_index = 0);
+    }
   in
   
   let spent_outpoints = List.map (fun txin -> (txin.previous_transaction_output.referenced_transaction_hash, txin.previous_transaction_output.transaction_output_index)) tx.transaction_inputs in
   let created_outpoints = List.mapi outpoint_of_txout tx.transaction_outputs in
 
-  List.iter (fun (hash, index) -> delete_utxo db hash index) spent_outpoints;
-  List.iter (insert_utxo db) created_outpoints
+  List.iter (fun (hash, index) -> UTxO.delete_by_hash_and_index db hash index) spent_outpoints;
+  List.iter (fun utxo -> ignore (UTxO.insert db utxo)) created_outpoints
 ;;
 (* since a transaction can spend an output that only appeard in the same block, we have to handle transactions in order *)
 let update_utxo_with_block db block hash =
   Printf.printf "[DB] starting UTxO update for block %s\n%!" (Utils.hex_string_of_hash_string hash);
-  match block_id hash db with
+  match Block.retrieve_by_hash db hash with
   | None -> failwith "tried to update utxo for non-existant block"
-  | Some block_id ->
-    List.iteri (S.transaction db (fun db -> update_utxo_with_transaction db block_id)) block.block_transactions;
+  | Some db_block ->
+    List.iteri (S.transaction db (fun db -> update_utxo_with_transaction db db_block.Block.id)) block.block_transactions;
     Printf.printf "[DB] finished UTxO update for block %s\n%!" (Utils.hex_string_of_hash_string hash);
 ;;
 
 let insert_block_into_blockchain hash previous_block_hash log_difficulty header db =
-  match block_exists hash db with
+  match Block.hash_exists db hash with
   | true -> NotInsertedExisted
   | false ->
-    match retrieve_block previous_block_hash db with
+    match Block.retrieve_by_hash db previous_block_hash with
     | None -> InsertionFailed
-    | Some (previous_block_id, _, previous_block_height, _, previous_block_cld, previous_is_main, _, _, _, _, _) ->
-      let record_id = S.insert db
-	sql"INSERT INTO blockchain(hash, height, previous_block, cumulative_log_difficulty, is_main, block_version, merkle_root, timestamp, difficulty_bits, nonce) VALUES(%s, %L, %L, %f, %b, %d, %s, %L, %l, %l)" (* TODO: proper main chain handling *)
-	hash
-	(Int64.add previous_block_height 1L)
-	previous_block_id
-	(previous_block_cld +. log_difficulty)
-	previous_is_main
-	header.block_version
-	header.merkle_root
-	(Utils.int64_of_unix_tm header.block_timestamp)
-	(int32_of_difficulty_bits header.block_difficulty_target)
-	header.block_nonce
-      in
-      (* Printf.printf "[ DBG] Inserted block %s at height %Lu\n" (Utils.hex_string_of_hash_string hash) (Int64.add previous_block_height 1L); *)
+    | Some previous_block ->
+      let record_id = Block.insert db {
+	Block.id = 0L;
+	hash = hash;
+	height = (Int64.succ previous_block.Block.height);
+	previous_block_id = previous_block.Block.id;
+	cumulative_log_difficulty = (previous_block.Block.cumulative_log_difficulty +. log_difficulty);
+	is_main = previous_block.Block.is_main;
+	block_header = header;
+      } in
       InsertedIntoBlockchain record_id
 ;;
 let insert_block_as_orphan hash previous_block_hash log_difficulty header db =
-  match orphan_exists hash db with
+  match Orphan.hash_exists db hash with
   | true -> NotInsertedExisted
   | false ->
-    let record_id = S.insert db
-      sql"INSERT INTO orphans(hash, previous_block_hash, log_difficulty, block_version, merkle_root, timestamp, difficulty_bits, nonce) VALUES(%s, %s, %f, %d, %s, %L, %l, %l)"
-      hash
-      previous_block_hash
-      log_difficulty
-      header.block_version
-      header.merkle_root
-      (Utils.int64_of_unix_tm header.block_timestamp)
-      (int32_of_difficulty_bits header.block_difficulty_target)
-      header.block_nonce
-    in
+    let record_id = Orphan.insert db {
+      Orphan.id = 0L;
+      hash = hash;
+      previous_block_hash = previous_block_hash;
+      log_difficulty = log_difficulty;
+      block_header = header;
+    } in
     InsertedAsOrphan record_id
-;;
-
-let orphans_for_previous_block_hash db hash =
-  S.select db
-    sqlc"SELECT @L{id}, @s{hash}, @s{previous_block_hash}, @f{log_difficulty} @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce} FROM orphans WHERE previous_block_hash = %s" hash
-;;
-let delete_orphan_by_id db id =
-  S.execute db
-    sql"DELETE FROM orphans WHERE id = %L"
-    id
-;;
-
-let insert_block header db =
-  let hash = Bitcoin_protocol_generator.block_hash header in
-  let log_difficulty = log_difficulty_of_difficulty_bits header.block_difficulty_target in
-  if not (block_exists hash db) then
-    if not (block_exists header.previous_block_hash db) then
-      (* orphan block *)
-      insert_block_as_orphan hash header.previous_block_hash log_difficulty header db
-    else (
-      (* we know the previous block, we can insert this block into the chain *)
-      match insert_block_into_blockchain hash header.previous_block_hash log_difficulty header db with
-      | InsertedIntoBlockchain i as result ->
-	result
-      | result -> result
-    )
-  else
-    NotInsertedExisted
 ;;
 
 (* we need a special implementation for this, since no previous block exists for the genesis block *)
@@ -354,19 +463,17 @@ let insert_genesis_block db =
   let hash = Config.testnet3_genesis_block_hash in
   let header = Config.testnet3_genesis_block_header in
   let log_difficulty = log_difficulty_of_difficulty_bits header.block_difficulty_target in
-  if not (block_exists hash db) then
-    Some (S.insert db
-	    sql"INSERT INTO blockchain(hash, height, previous_block, cumulative_log_difficulty, is_main, block_version, merkle_root, timestamp, difficulty_bits, nonce) VALUES(%s, %L, %L, %f, 1, %d, %s, %L, %l, %l)"
-	    hash
-	    0L
-	    0L
-	    log_difficulty
-	    header.block_version
-	    header.merkle_root
-	    (Utils.int64_of_unix_tm header.block_timestamp)
-	    (int32_of_difficulty_bits header.block_difficulty_target)
-	    header.block_nonce
-    )
+  if not (Block.hash_exists db hash) then
+    let record_id = Block.insert db {
+      Block.id = 0L;
+      hash = hash;
+      height = 0L;
+      previous_block_id = 0L;
+      cumulative_log_difficulty = log_difficulty;
+      is_main = true;
+      block_header = header;
+    } in
+    Some record_id
   else
     None
 ;;

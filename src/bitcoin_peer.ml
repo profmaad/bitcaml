@@ -158,13 +158,14 @@ let construct_block_locator_list_message peer hash_stop =
   let rec select_block_hashes step_size height count blockchain_db = 
     let next_step_size = if count >= 10L then Int64.mul step_size 2L else step_size in
     let height = if height <= 0L then 0L else height in
-    match Bitcoin_blockchain_db.retrieve_block_at_height height blockchain_db with
+    match Bitcoin_blockchain_db.Block.retrieve_mainchain_block_at_height blockchain_db height with
     | None -> []
-    | Some (_, hash, _, _, _, _, _, _, _, _, _) ->
-      hash :: if height = 0L then [] else
+    | Some db_block ->
+      db_block.Bitcoin_blockchain_db.Block.hash :: if height = 0L then [] else
 	  (select_block_hashes next_step_size (Int64.sub height next_step_size) (Int64.add count 1L) blockchain_db)
   in
-  let mainchain_height = Bitcoin_blockchain_db.mainchain_height peer.blockchain.Bitcoin_blockchain.db in
+  let mainchain_tip = Bitcoin_blockchain_db.Block.retrieve_mainchain_tip peer.blockchain.Bitcoin_blockchain.db in
+  let mainchain_height = (Option.get mainchain_tip).Bitcoin_blockchain_db.Block.height in
   (* debug_may peer (fun () -> Printf.printf "[INFO] current mainchain height: %Lu\n" mainchain_height); *)
   Printf.printf "[INFO] current mainchain height: %Lu\n" mainchain_height; flush stdout;
   let block_locator_hashes = select_block_hashes 1L mainchain_height 0L peer.blockchain.Bitcoin_blockchain.db in

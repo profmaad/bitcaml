@@ -225,21 +225,18 @@ let binary_arithmetic_op_int64_result f stack =
   let op2 = pop_int64 stack in
   let op1 = pop_int64 stack in
   let result = f op1 op2 in
-  Printf.printf "[DEBUG] binary_arithmetic_op_int32_result op1: %Ld, op2: %Ld, result: %Ld\n" op1 op2 result;
   push_int64 result stack
 ;;
 let binary_arithmetic_op_boolean_result f stack =
   let op2 = pop_int64 stack in
   let op1 = pop_int64 stack in
   let result = f op1 op2 in
-  Printf.printf "[DEBUG] binary_arithmetic_op_boolean_result op1: %Ld, op2: %Ld, result: %b\n" op1 op2 result;
   push_bool_arithmetic result stack
 ;;
 let binary_boolean_op_boolean_result f stack =
   let op2 = pop_bool_arithmetic stack in
   let op1 = pop_bool_arithmetic stack in
   let result = f op1 op2 in
-  Printf.printf "[DEBUG] binary_boolean_op_boolean_result op1: %b, op2: %b, result: %b\n" op1 op2 result;
   push_bool_arithmetic result stack
 ;;
 
@@ -513,41 +510,46 @@ let execute_script script tx_data =
     | [] -> (stack, altstack)
     | CodeSeparator :: ws ->
       execute_script_ ifstack not_taken_if_level stack altstack tx_data ws ws
+
     | If :: ws ->
       if branch_is_executing ifstack not_taken_if_level then (
 	let value = bool_of_data_item (pop stack) in
 	Stack.push value ifstack;
-	Printf.printf "[SCRIPT] executing word: If (value: %b)\n" value; dump_ifstack ifstack not_taken_if_level;
+	(* Printf.printf "[SCRIPT] executing word: If (value: %b)\n" value; dump_ifstack ifstack not_taken_if_level; *)
 	execute_script_ ifstack not_taken_if_level stack altstack tx_data script_after_codesep ws
       ) else
 	execute_script_ ifstack (not_taken_if_level + 1) stack altstack tx_data script_after_codesep ws
+
     | NotIf :: ws ->
       if branch_is_executing ifstack not_taken_if_level then (
 	let value = bool_of_data_item (pop stack) in
 	Stack.push (not value) ifstack;
-	Printf.printf "[SCRIPT] executing word: NotIf (value: %b)\n" value; dump_ifstack ifstack not_taken_if_level;
+	(* Printf.printf "[SCRIPT] executing word: NotIf (value: %b)\n" value; dump_ifstack ifstack not_taken_if_level; *)
 	execute_script_ ifstack not_taken_if_level stack altstack tx_data script_after_codesep ws
       ) else 
 	execute_script_ ifstack (not_taken_if_level + 1) stack altstack tx_data script_after_codesep ws
+
     | Else :: ws ->
       if not_taken_if_level = 0 then (
 	Stack.push (not (Stack.pop ifstack)) ifstack;
-	Printf.printf "[SCRIPT] executing word: Else\n"; dump_ifstack ifstack not_taken_if_level
+	(* Printf.printf "[SCRIPT] executing word: Else\n"; dump_ifstack ifstack not_taken_if_level *)
       );
       execute_script_ ifstack not_taken_if_level stack altstack tx_data script_after_codesep ws
+
     | EndIf :: ws ->
       if branch_is_executing ifstack not_taken_if_level then (
 	ignore (Stack.pop ifstack);
-	Printf.printf "[SCRIPT] executing word: EndIf\n"; dump_ifstack ifstack not_taken_if_level;
+	(* Printf.printf "[SCRIPT] executing word: EndIf\n"; dump_ifstack ifstack not_taken_if_level; *)
 	execute_script_ ifstack not_taken_if_level stack altstack tx_data script_after_codesep ws
       ) else
 	execute_script_ ifstack (min 0 (not_taken_if_level - 1)) stack altstack tx_data script_after_codesep ws
+
     | word :: ws ->
       if branch_is_executing ifstack not_taken_if_level then (
-	Printf.printf "[SCRIPT] executing word: %s\n" (Bitcoin_script_pp.pp_string_of_word word);
+	(* Printf.printf "[SCRIPT] executing word: %s\n" (Bitcoin_script_pp.pp_string_of_word word); *)
 	execute_word stack altstack tx_data script_after_codesep word;
-	if (Stack.length stack) < 5 then dump_stack stack;
-	print_endline "///////////////////////////////";
+	(* if (Stack.length stack) < 5 then dump_stack stack; *)
+	(* print_endline "///////////////////////////////"; *)
       );
       execute_script_ ifstack not_taken_if_level stack altstack tx_data script_after_codesep ws
   in
