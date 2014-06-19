@@ -72,7 +72,8 @@ let init_db db =
     sqlinit"CREATE TABLE IF NOT EXISTS transactions(
     id INTEGER PRIMARY KEY,
     hash TEXT COLLATE BINARY NOT NULL,
-    block INTEGER NOT NULL
+    block INTEGER NOT NULL,
+    tx_index INTEGER NOT NULL
   );";
   S.execute db
     sqlinit"CREATE TABLE IF NOT EXISTS unspent_transaction_outputs(
@@ -340,14 +341,14 @@ module MemoryPool = struct
   ;;
 end
 
-let block_id_for_transaction_hash db tx_hash =
+let block_id_and_index_for_transaction_hash db tx_hash =
   S.select_one_maybe db
-    sqlc"SELECT @L{block} FROM transactions WHERE hash = %s"
+    sqlc"SELECT @L{block}, @d{tx_index} FROM transactions WHERE hash = %s"
     tx_hash
 ;;
-let block_hash_for_transaction_hash db tx_hash =
+let block_hash_and_index_for_transaction_hash db tx_hash =
   S.select_one_maybe db
-    sqlc"SELECT @s{hash} FROM blockchain WHERE id = (SELECT block FROM transactions WHERE hash = %s)"
+    sqlc"SELECT @s{(select hash from blockchain where id = transactions.block) as hash}, @d{tx_index} FROM transactions WHERE hash = %s"
     tx_hash
 ;;
 
@@ -460,13 +461,14 @@ let rollback_utxo_with_block db block hash =
 ;;
 
 let register_transactions_for_block db block block_id =
-  let register_tx tx =
+  let register_tx tx_index tx =
     let hash = Bitcoin_protocol_generator.transaction_hash tx in
-    S.execute db sqlc"INSERT INTO transactions (hash, block) VALUES (%s, %L)"
+    S.execute db sqlc"INSERT INTO transactions (hash, block, tx_index) VALUES (%s, %L, %d)"
       hash
       block_id
+      tx_index
   in
-  List.iter register_tx block.block_transactions
+  List.iteri register_tx block.block_transactions
 ;;
 
 let insert_block_into_blockchain hash previous_block_hash log_difficulty header db =

@@ -269,6 +269,7 @@ let rec handle_block blockchain time block =
     | DB.NotInsertedExisted -> raise BlockIsDuplicate
     | DB.InsertionFailed -> failwith "Block insertion failed at DB layer"
     | DB.InsertedIntoBlockchain record_id ->
+      DB.register_transactions_for_block blockchain.db block record_id;
       Printf.printf "[DEBUG] inserted block %s into db as %Ld\n" (Utils.hex_string_of_hash_string hash) record_id
     | _ -> failwith "Block insertion failed at DB layer"
     );
@@ -322,8 +323,22 @@ and resolve_orphans blockchain time inserted_hash =
 
   let resolved_orphans = DB.Orphan.retrieve_by_previous_block_hash blockchain.db inserted_hash in
   List.iter resolve_orphan_block resolved_orphans
+
 and reorganise_mainchain db blockchain forkblock sidechain =
+  let rollback_utxo_with_hash hash =
+    let block = Option.get (Blockstorage.load_block blockchain.blockstorage hash) in
+    DB.rollback_utxo_with_block db block hash
+  in
+
+  let mainchain_tip = Option.get (DB.Block.retrieve_mainchain_tip db) in
+  let former_mainchain = Option.get (DB.retrieve_between_hashes db mainchain_tip.DB.Block.hash forkblock.DB.Block.hash) in
+
+  (* Redefine the main branch to only go up to this fork block *)
+  DB.rollback_mainchain_to_height db forkblock.DB.Block.height;
+
   (* rollback utxo via former mainchain blocks after forkblock *)
+  List.iter (fun db_block -> rollback_utxo_with_hash db_block.DB.Block.hash) (List.rev former_mainchain);
+
   (* then handle_block each block in sidechain in order *)
   (* if anything goes wrong, throw an exception and we rollback everything *)
   ()
