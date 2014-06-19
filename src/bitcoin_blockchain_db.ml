@@ -68,14 +68,12 @@ let init_db db =
   S.execute db
     sqlinit"CREATE INDEX IF NOT EXISTS memory_pool_orphan_index ON memory_pool (is_orphan);";
 
-  (* S.execute db *)
-  (*   sqlinit"CREATE TABLE IF NOT EXISTS transactions( *)
-  (*   id INTEGER PRIMARY KEY, *)
-  (*   hash TEXT COLLATE BINARY NOT NULL, *)
-  (*   block INTEGER NOT NULL, *)
-  (*   output_count INTEGER NOT NULL *)
-  (*   is_coinbase BOOLEAN NOT NULL *)
-  (* );"; *)
+  S.execute db
+    sqlinit"CREATE TABLE IF NOT EXISTS transactions(
+    id INTEGER PRIMARY KEY,
+    hash TEXT COLLATE BINARY NOT NULL,
+    block INTEGER NOT NULL
+  );";
   S.execute db
     sqlinit"CREATE TABLE IF NOT EXISTS unspent_transaction_outputs(
     id INTEGER PRIMARY KEY,
@@ -86,8 +84,8 @@ let init_db db =
     script TEXT COLLATE BINARY NOT NULL,
     is_coinbase BOOLEAN NOT NULL
   );";
-  (* S.execute db *)
-  (*   sqlinit"CREATE INDEX IF NOT EXISTS transactions_hash_index ON transactions (hash);"; *)
+  S.execute db
+    sqlinit"CREATE INDEX IF NOT EXISTS transactions_hash_index ON transactions (hash);";
   (* S.execute db *)
   (*   sqlinit"CREATE INDEX IF NOT EXISTS transactions_block_index ON transactions (block);"; *)
   S.execute db
@@ -181,7 +179,7 @@ module Block = struct
       (Utils.int64_of_unix_tm db_block.block_header.block_timestamp)
       (int32_of_difficulty_bits db_block.block_header.block_difficulty_target)
       db_block.block_header.block_nonce
-  ;;    
+  ;;
 end
 
 module Orphan = struct
@@ -342,6 +340,17 @@ module MemoryPool = struct
   ;;
 end
 
+let block_id_for_transaction_hash db tx_hash =
+  S.select_one_maybe db
+    sqlc"SELECT @L{block} FROM transactions WHERE hash = %s"
+    tx_hash
+;;
+let block_hash_for_transaction_hash db tx_hash =
+  S.select_one_maybe db
+    sqlc"SELECT @s{hash} FROM blockchain WHERE id = (SELECT block FROM transactions WHERE hash = %s)"
+    tx_hash
+;;
+
 let rec nth_predecessor_by_id db id n =
   match Block.retrieve db id with
   | None -> None
@@ -386,6 +395,27 @@ let retrieve_sidechain_with_leaf db sidechain_hash =
   | None -> None
   | Some block -> retrieve_sidechain_acc db [] block.Block.id
 ;;
+let retrieve_between_hashes db leaf_hash base_hash =
+  let rec retrieve_between_hashes_acc db acc leaf_id base_hash =
+    match Block.retrieve db leaf_id with
+    | None -> None
+    | Some block ->
+      if block.Block.hash = base_hash then Some acc
+      else retrieve_between_hashes_acc db (block :: acc) block.Block.previous_block_id base_hash
+  in
+  if base_hash = leaf_hash then Some []
+  else (
+    match Block.retrieve_by_hash db leaf_hash with
+    | None -> None
+    | Some block -> retrieve_between_hashes_acc db [block] block.Block.previous_block_id base_hash
+  )
+;;
+
+let rollback_mainchain_to_height db height =
+  S.execute db
+    sqlc"UPDATE blockchain SET is_main = 0 WHERE is_main = 1 AND height > %L"
+    height
+;;
 
 let block_exists_anywhere db hash =
   (Block.hash_exists db hash) || (Orphan.hash_exists db hash)
@@ -424,6 +454,19 @@ let update_utxo_with_block db block hash =
   | Some db_block ->
     List.iteri (S.transaction db (fun db -> update_utxo_with_transaction db db_block.Block.id)) block.block_transactions;
     Printf.printf "[DB] finished UTxO update for block %s\n%!" (Utils.hex_string_of_hash_string hash);
+;;
+let rollback_utxo_with_block db block hash =
+  Printf.printf "[DB] starting UTxO rollback for block %s\n%!" (Utils.hex_string_of_hash_string hash);
+;;
+
+let register_transactions_for_block db block block_id =
+  let register_tx tx =
+    let hash = Bitcoin_protocol_generator.transaction_hash tx in
+    S.execute db sqlc"INSERT INTO transactions (hash, block) VALUES (%s, %L)"
+      hash
+      block_id
+  in
+  List.iter register_tx block.block_transactions
 ;;
 
 let insert_block_into_blockchain hash previous_block_hash log_difficulty header db =
