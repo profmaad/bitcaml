@@ -233,6 +233,60 @@ let verify_block blockchain time block hash =
   ()
 ;;
 
+module BlockOutpointMap = Map.Make(String);;
+
+let rollback_utxo_with_transaction blockchain block_id tx_index tx =
+  let rec block_outpoint_map_of_outpoints map = function
+    | [] -> map
+    | (tx_hash, txout_index) :: outpoints ->
+      match DB.block_id_hash_and_index_for_transaction_hash blockchain.db tx_hash with
+      | None -> failwith (Printf.sprintf "transaction for hash %s not found during UTxO rollback" tx_hash)
+      | Some (block_id, block_hash, tx_index) ->
+	let current_binding = try BlockOutpointMap.find block_hash map with Not_found -> [] in
+	let map = BlockOutpointMap.add block_hash ((block_id, tx_hash, tx_index, txout_index) :: current_binding) map in
+	block_outpoint_map_of_outpoints map outpoints
+  in
+  let readd_outpoint_in_block block (block_id, tx_hash, tx_index, txout_index) =
+    let txout = List.nth (List.nth block.block_transactions tx_index).transaction_outputs (Int32.to_int txout_index) in
+    let db_utxo = {
+      DB.UTxO.id = 0L;
+      hash = tx_hash;
+      output_index = txout_index;
+      block_id = block_id;
+      value = txout.transaction_output_value;
+      script = txout.output_script;
+      is_coinbase = (tx_index = 0);
+    } in
+    ignore (DB.UTxO.insert blockchain.db db_utxo)
+  in
+  let readd_outpoints_in_block block_hash outpoints =
+    match Blockstorage.load_block blockchain.blockstorage block_hash with
+    | None -> failwith (Printf.sprintf "block for hash %s failed to load from storage during UTxO rollback" block_hash)
+    | Some block ->
+      List.iter (readd_outpoint_in_block block) outpoints
+  in
+
+  let hash = Bitcoin_protocol_generator.transaction_hash tx in
+
+  (* remove all UTxO entries created by this transaction *)
+  DB.UTxO.delete_by_hash blockchain.db hash;
+
+  (* iterate over inputs and readd the corresponding UTxO entry *)
+
+  let spent_outpoints = List.map (fun txin -> (txin.previous_transaction_output.referenced_transaction_hash, txin.previous_transaction_output.transaction_output_index)) tx.transaction_inputs in
+  let spent_outpoints_map = block_outpoint_map_of_outpoints BlockOutpointMap.empty spent_outpoints in
+  BlockOutpointMap.iter readd_outpoints_in_block spent_outpoints_map
+;;
+
+let rollback_utxo_with_block blockchain block hash =
+  Printf.printf "[DB] starting UTxO rollback for block %s\n%!" (Utils.hex_string_of_hash_string hash);
+  match DB.Block.retrieve_by_hash blockchain.db hash with
+  | None -> failwith "tried to rollback UTxO for non-existant block"
+  | Some db_block ->
+    List.iteri (DB.run_in_transaction blockchain.db (fun db -> rollback_utxo_with_transaction blockchain db_block.DB.Block.id)) (List.rev block.block_transactions);
+    Printf.printf "[DB] finished UTxO rollback for block %s\n%!" (Utils.hex_string_of_hash_string hash);
+;;
+
 let rollback_block blockchain block = ();;
 
 (* 15. Add block into the tree. *)
@@ -327,7 +381,7 @@ and resolve_orphans blockchain time inserted_hash =
 and reorganise_mainchain db blockchain forkblock sidechain =
   let rollback_utxo_with_hash hash =
     let block = Option.get (Blockstorage.load_block blockchain.blockstorage hash) in
-    DB.rollback_utxo_with_block db block hash
+    rollback_utxo_with_block blockchain block hash
   in
 
   let mainchain_tip = Option.get (DB.Block.retrieve_mainchain_tip db) in

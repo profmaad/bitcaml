@@ -287,7 +287,12 @@ module UnspentTransactionOutput = struct
     in
     Option.map from_result result
   ;;
-  
+
+  let delete_by_hash db hash =
+    S.execute db
+      sqlc"DELETE FROM unspent_transaction_outputs WHERE hash = %s"
+      hash
+  ;;
   let delete_by_hash_and_index db hash index =
     S.execute db
       sqlc"DELETE FROM unspent_transaction_outputs WHERE hash = %s AND output_index = %l"
@@ -349,6 +354,11 @@ let block_id_and_index_for_transaction_hash db tx_hash =
 let block_hash_and_index_for_transaction_hash db tx_hash =
   S.select_one_maybe db
     sqlc"SELECT @s{(select hash from blockchain where id = transactions.block) as hash}, @d{tx_index} FROM transactions WHERE hash = %s"
+    tx_hash
+;;
+let block_id_hash_and_index_for_transaction_hash db tx_hash =
+  S.select_one_maybe db
+    sqlc"SELECT @L{block}, @s{(select hash from blockchain where id = transactions.block) as hash}, @d{tx_index} FROM transactions WHERE hash = %s"
     tx_hash
 ;;
 
@@ -451,13 +461,10 @@ let update_utxo_with_transaction db block_id tx_index tx =
 let update_utxo_with_block db block hash =
   Printf.printf "[DB] starting UTxO update for block %s\n%!" (Utils.hex_string_of_hash_string hash);
   match Block.retrieve_by_hash db hash with
-  | None -> failwith "tried to update utxo for non-existant block"
+  | None -> failwith "tried to update UTxO for non-existant block"
   | Some db_block ->
     List.iteri (S.transaction db (fun db -> update_utxo_with_transaction db db_block.Block.id)) block.block_transactions;
     Printf.printf "[DB] finished UTxO update for block %s\n%!" (Utils.hex_string_of_hash_string hash);
-;;
-let rollback_utxo_with_block db block hash =
-  Printf.printf "[DB] starting UTxO rollback for block %s\n%!" (Utils.hex_string_of_hash_string hash);
 ;;
 
 let register_transactions_for_block db block block_id =
