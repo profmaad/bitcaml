@@ -287,8 +287,6 @@ let rollback_utxo_with_block blockchain block hash =
     Printf.printf "[DB] finished UTxO rollback for block %s\n%!" (Utils.hex_string_of_hash_string hash);
 ;;
 
-let rollback_block blockchain block = ();;
-
 (* 15. Add block into the tree. *)
 let classify_block blockchain block =
 
