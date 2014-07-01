@@ -48,7 +48,7 @@ The following is more or less implemented:
 * Blockchain storage
 * Blockchain reorganisation (switching sidechain to mainchain, untested)
 
-The following is missng:
+The following is missing:
 * Transaction verification
 * Transaction memory pool
 * Transaction and block relaying
