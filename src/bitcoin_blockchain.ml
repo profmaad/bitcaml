@@ -11,6 +11,7 @@ end
 exception Rejected of string * rejection_reason;;
 exception BlockIsOrphan;;
 exception BlockIsDuplicate;;
+exception TransactionIsOrphan;;
 
 type block_type =
 | Sidechain
@@ -126,12 +127,7 @@ let block_has_duplicate_txins block =
   not (add_outpoints_if_not_exists TxOutMap.empty txins)
 ;;
 
-let verify_mainchain_txin_return_value blockchain height tx processed_txout txin_index txin =
-  let spent_output =
-    try Some (TxOutMap.find (txin.previous_transaction_output.referenced_transaction_hash, txin.previous_transaction_output.transaction_output_index) processed_txout) with
-    | Not_found -> DB.UTxO.retrieve_by_hash_and_index blockchain.db txin.previous_transaction_output.referenced_transaction_hash txin.previous_transaction_output.transaction_output_index
-  in
-
+let verify_txin_return_value blockchain height tx txin_index txin spent_output =
   match spent_output with
   | None -> raise (Rejected ("bad-txns-inputs-missingorspent", RejectionInvalid))
   | Some utxo ->
@@ -151,6 +147,14 @@ let verify_mainchain_txin_return_value blockchain height tx processed_txout txin
     verify_transaction_script (tx, txin_index) txin.signature_script utxo.DB.UTxO.script;
 
     utxo.DB.UTxO.value
+;;
+
+let verify_mainchain_txin_return_value blockchain height tx processed_txout txin_index txin =
+  let spent_output =
+    try Some (TxOutMap.find (txin.previous_transaction_output.referenced_transaction_hash, txin.previous_transaction_output.transaction_output_index) processed_txout) with
+    | Not_found -> DB.UTxO.retrieve_by_hash_and_index blockchain.db txin.previous_transaction_output.referenced_transaction_hash txin.previous_transaction_output.transaction_output_index
+  in
+  verify_txin_return_value blockchain height tx txin_index txin spent_output
 ;;
 let verify_mainchain_tx_return_fee blockchain height processed_txout tx =
   let input_values = List.mapi (verify_mainchain_txin_return_value blockchain height tx processed_txout) tx.transaction_inputs in
@@ -264,7 +268,7 @@ let rollback_utxo_with_transaction blockchain block_id tx_index tx =
   let rec block_outpoint_map_of_outpoints map = function
     | [] -> map
     | (tx_hash, txout_index) :: outpoints ->
-      match DB.block_id_hash_and_index_for_transaction_hash blockchain.db tx_hash with
+      match DB.mainchain_block_id_hash_and_index_for_transaction_hash blockchain.db tx_hash with
       | None -> failwith (Printf.sprintf "transaction for hash %s not found during UTxO rollback" tx_hash)
       | Some (block_id, block_hash, tx_index) ->
 	let current_binding = try BlockOutpointMap.find block_hash map with Not_found -> [] in
@@ -421,4 +425,66 @@ and reorganise_mainchain db blockchain time forkblock sidechain =
   (* if anything goes wrong, throw an exception and we rollback everything *)
   let sidechain_blocks = List.map (fun db_block -> Option.get (Blockstorage.load_block blockchain.blockstorage db_block.DB.Block.hash)) sidechain in
   List.iter (handle_block blockchain time) sidechain_blocks
+;;
+
+let verify_mempool_txin blockchain mainchain_height tx txin_index txin =
+  (* TODO: For each input, if the referenced output exists in any other tx in the pool, reject this transaction. *)
+
+  (* For each input, look in the main branch and the transaction pool to find the referenced output transaction. If the output transaction is missing for any input, this will be an orphan transaction. Add to the orphan transactions, if a matching transaction is not in there already. *)
+  if not ((DB.mainchain_transaction_hash_exists blockchain.db txin.previous_transaction_output.referenced_transaction_hash) || (DB.MemoryPool.hash_exists blockchain.db txin.previous_transaction_output.referenced_transaction_hash)) then raise TransactionIsOrphan;
+
+  let spent_output = DB.UTxO.retrieve_by_hash_and_index blockchain.db txin.previous_transaction_output.referenced_transaction_hash txin.previous_transaction_output.transaction_output_index in
+  verify_txin_return_value blockchain mainchain_height tx txin_index txin spent_output;
+;;
+let verify_mempool_transaction blockchain mainchain_height tx hash =
+  (* tx rules 2-4 *)
+  verify_basic_transaction_rules tx;
+
+  (* Make sure none of the inputs have hash=0, n=-1 (coinbase transactions) *)
+  if List.exists transaction_input_is_coinbase tx.transaction_inputs then raise (Rejected ("coinbase", RejectionInvalid));
+
+  (* check for duplicate inputs *)
+  if tx_has_duplicate_txins tx then raise (Rejected ("bad-txns-inputs-duplicate", RejectionInvalid));
+
+  (* TODO: Check that nLockTime <= INT_MAX[1], size in bytes >= 100[2], and sig opcount <= 2 *)
+
+  (* TODO: Reject "nonstandard" transactions: scriptSig doing anything other than pushing numbers on the stack, or scriptPubkey not matching the two usual forms *)
+
+  (* Reject if we already have matching tx in the pool, or in a block in the main branch *)
+  if (DB.MemoryPool.hash_exists blockchain.db hash) || (DB.mainchain_transaction_hash_exists blockchain.db hash) then raise (Rejected ("duplicate", RejectionDuplicate));
+
+  (* apply per-input checks *)
+  let input_value = List.fold_left Int64.add 0L (List.mapi (verify_mempool_txin blockchain mainchain_height tx) tx.transaction_inputs) in
+  if not (legal_money_range input_value) then raise (Rejected ("bad-txns-inputvalues-outofrange", RejectionInvalid));
+  let output_value = List.fold_left Int64.add 0L (List.map (fun txout -> txout.transaction_output_value) tx.transaction_outputs) in
+
+  if(input_value < output_value) then raise (Rejected ("bad-txns-in-belowout", RejectionInvalid));
+
+  let tx_fee = Int64.sub input_value output_value in
+  if not (legal_money_range tx_fee) then raise (Rejected ("bad-txns-fee-outofrange", RejectionInvalid));
+
+  (* TODO: Reject if transaction fee (defined as sum of input values minus sum of output values) would be too low to get into an empty block *)
+;;
+
+let handle_orphan_transaction blockchain tx hash =
+  (* TODO: insert into mempool with is_orphan = 1 *)
+  ()
+;;
+let rec handle_transaction blockchain time tx =
+  let hash = Bitcoin_protocol_generator.transaction_hash tx in
+  let mainchain_height = Option.default_f (fun () -> 0L) (fun db_block -> db_block.DB.Block.height) (DB.Block.retrieve_mainchain_tip blockchain.db) in
+
+  ( try verify_mempool_transaction blockchain mainchain_height tx hash with
+  | TransactionIsOrphan ->
+    Printf.printf "[DEBUG] transaction %s is an orphan\n" (Utils.hex_string_of_hash_string hash);
+    ignore (handle_orphan_transaction blockchain tx hash);
+    raise TransactionIsOrphan
+  | Rejected (reason, rejection_code) ->
+    Printf.printf "[WARNING] mempool transaction %s failed verification: %s\n" (Utils.hex_string_of_hash_string hash) reason;
+    raise (Rejected (reason, rejection_code));
+  );
+
+  (* TODO: insert into memory pool *)
+  (* TODO: handle orphan transactions in memory pool *)
+  (* TODO: signal success *)
 ;;

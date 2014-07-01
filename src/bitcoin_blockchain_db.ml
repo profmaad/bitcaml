@@ -344,22 +344,29 @@ module MemoryPool = struct
   let delete_by_hash db hash =
     S.execute db sql"DELETE FROM memory_pool WHERE hash = %s" hash
   ;;
+
+  let hash_exists db hash =
+    S.select_one db sql"SELECT @b{count(1)} FROM memory_pool WHERE hash = %s LIMIT 1" hash
+  ;;
 end
 
-let block_id_and_index_for_transaction_hash db tx_hash =
+let mainchain_block_id_and_index_for_transaction_hash db tx_hash =
   S.select_one_maybe db
-    sqlc"SELECT @L{block}, @d{tx_index} FROM transactions WHERE hash = %s"
+    sqlc"SELECT @L{transactions.block}, @d{transactions.tx_index} FROM transactions WHERE transaction.hash = %s AND blockchain.is_main = 1 INNER JOIN blockchain ON transactions.block = blockchain.id"
     tx_hash
 ;;
-let block_hash_and_index_for_transaction_hash db tx_hash =
+let mainchain_block_hash_and_index_for_transaction_hash db tx_hash =
   S.select_one_maybe db
-    sqlc"SELECT @s{(select hash from blockchain where id = transactions.block) as hash}, @d{tx_index} FROM transactions WHERE hash = %s"
+    sqlc"SELECT @s{blockchain.hash where}, @d{transactions.tx_index} FROM transactions WHERE hash = %s AND blockchain.is_main = 1 INNER JOIN blockchain ON transactions.block = blockchain.id"
     tx_hash
 ;;
-let block_id_hash_and_index_for_transaction_hash db tx_hash =
+let mainchain_block_id_hash_and_index_for_transaction_hash db tx_hash =
   S.select_one_maybe db
-    sqlc"SELECT @L{block}, @s{(select hash from blockchain where id = transactions.block) as hash}, @d{tx_index} FROM transactions WHERE hash = %s"
+    sqlc"SELECT @L{transactions.block}, @s{blockchain.hash}, @d{transactions.tx_index} FROM transactions WHERE hash = %s AND blockchain.is_main = 1 INNER JOIN blockchain ON transactions.block = blockchain.id"
     tx_hash
+;;
+let mainchain_transaction_hash_exists db hash =
+  S.select_one db sql"SELECT @b{count(1)} FROM transactions WHERE transactions.hash = %s AND blockchain.is_main = 1 INNER JOIN blockchain ON transactions.block = blockchain.id" hash
 ;;
 
 let rec nth_predecessor_by_id db id n =
