@@ -43,8 +43,10 @@ The following is more or less implemented:
 
 * Network protocol (nearly complete, lacking support for alert messages)
 * Scripting engine (complete, but not fully tested)
-* Block verification (some checks are missing)
-* Blockchain download (it downloads the blockchain, but doesn't perform full verification yet)
+* Block verification
+* Blockchain download
+* Blockchain storage
+* Blockchain reorganisation (switching sidechain to mainchain, untested)
 
 The following is missng:
 * Transaction verification
@@ -52,7 +54,6 @@ The following is missng:
 * Transaction and block relaying
 * Connecting to multiple peers
 * Managing bitcoin network time
-* Blockchain reorganisation (switching a side chain to be the main chain)
 * Any kind of wallet or enduser functionality
 
 Disclaimer
