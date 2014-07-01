@@ -360,7 +360,7 @@ let rec handle_block blockchain time block =
       failwith "mainchain ancestor of sidechain block not found"
     | Some (sidechain, forkblock) ->
       Printf.printf "[INFO] switching mainchain starting from %s to %s\n" (Utils.hex_string_of_hash_string forkblock.DB.Block.hash) (Utils.hex_string_of_hash_string hash);
-      DB.run_in_transaction blockchain.db (fun db -> reorganise_mainchain db blockchain forkblock sidechain)
+      DB.run_in_transaction blockchain.db (fun db -> reorganise_mainchain db blockchain time forkblock sidechain)
 
 (* For each orphan block for which this block is its prev, run all these steps (including this one) recursively on that orphan *)
 and resolve_orphans blockchain time inserted_hash =
@@ -376,7 +376,8 @@ and resolve_orphans blockchain time inserted_hash =
   let resolved_orphans = DB.Orphan.retrieve_by_previous_block_hash blockchain.db inserted_hash in
   List.iter resolve_orphan_block resolved_orphans
 
-and reorganise_mainchain db blockchain forkblock sidechain =
+(* we throw exceptions all over the place on purpose (Option.get...), because unless everything works in reorganisation, we break with an exception and rollback the DB transaction *)
+and reorganise_mainchain db blockchain time forkblock sidechain =
   let rollback_utxo_with_hash hash =
     let block = Option.get (Blockstorage.load_block blockchain.blockstorage hash) in
     rollback_utxo_with_block blockchain block hash
@@ -393,5 +394,6 @@ and reorganise_mainchain db blockchain forkblock sidechain =
 
   (* then handle_block each block in sidechain in order *)
   (* if anything goes wrong, throw an exception and we rollback everything *)
-  ()
+  let sidechain_blocks = List.map (fun db_block -> Option.get (Blockstorage.load_block blockchain.blockstorage db_block.DB.Block.hash)) sidechain in
+  List.iter (handle_block blockchain time) sidechain_blocks
 ;;
