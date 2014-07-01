@@ -103,6 +103,29 @@ module TxOutMap = Map.Make(struct
   ;;
 end);;
 
+let tx_has_duplicate_txins tx =
+  let rec add_outpoints_if_not_exists txoutmap = function
+    | [] -> true
+    | outpoint :: outpoints ->
+      if TxOutMap.mem outpoint txoutmap then false
+      else add_outpoints_if_not_exists (TxOutMap.add outpoint true txoutmap) outpoints
+  in
+
+  let txins = List.map (fun txin -> (txin.previous_transaction_output.referenced_transaction_hash, txin.previous_transaction_output.transaction_output_index)) tx.transaction_inputs in
+  not (add_outpoints_if_not_exists TxOutMap.empty txins)
+;;
+let block_has_duplicate_txins block =
+  let rec add_outpoints_if_not_exists txoutmap = function
+    | [] -> true
+    | outpoint :: outpoints ->
+      if TxOutMap.mem outpoint txoutmap then false
+      else add_outpoints_if_not_exists (TxOutMap.add outpoint true txoutmap) outpoints
+  in
+
+  let txins = List.concat (List.map (fun tx -> List.map (fun txin -> (txin.previous_transaction_output.referenced_transaction_hash, txin.previous_transaction_output.transaction_output_index)) tx.transaction_inputs) block.block_transactions) in
+  not (add_outpoints_if_not_exists TxOutMap.empty txins)
+;;
+
 let verify_mainchain_txin_return_value blockchain height tx processed_txout txin_index txin =
   let spent_output =
     try Some (TxOutMap.find (txin.previous_transaction_output.referenced_transaction_hash, txin.previous_transaction_output.transaction_output_index) processed_txout) with
@@ -170,6 +193,8 @@ let verify_mainchain_block blockchain time block hash height =
       (* print_endline "//////////////"; *)
       verify_mainchain_block_acc_return_fees processed_txout (Int64.add tx_fees tx_fee) txs
   in
+
+  if block_has_duplicate_txins block then raise (Rejected ("bad-txns-inputs-duplicate", RejectionInvalid));
   
   let processed_txout = TxOutMap.empty in
   let tx_fees = verify_mainchain_block_acc_return_fees processed_txout 0L (List.tl block.block_transactions) in
