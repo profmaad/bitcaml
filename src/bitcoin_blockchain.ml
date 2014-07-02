@@ -156,7 +156,7 @@ let verify_mainchain_txin_return_value blockchain height tx processed_txout txin
   in
   verify_txin_return_value blockchain height tx txin_index txin spent_output
 ;;
-let verify_mainchain_tx_return_fee blockchain height processed_txout tx =
+let verify_mainchain_tx_return_fee blockchain height time processed_txout tx =
   let input_values = List.mapi (verify_mainchain_txin_return_value blockchain height tx processed_txout) tx.transaction_inputs in
   let input_value = List.fold_left Int64.add 0L input_values in
 
@@ -171,6 +171,9 @@ let verify_mainchain_tx_return_fee blockchain height processed_txout tx =
 
   let tx_fee = Int64.sub input_value output_value in
   if not (legal_money_range tx_fee) then raise (Rejected ("bad-txns-fee-outofrange", RejectionInvalid));
+
+  (* verify tx.transaction_lock_time (see bitcoind:main.cpp:2519) *)
+  if not (transaction_is_final height time tx) then raise (Rejected ("bad-txns-nonfinal", RejectionInvalid));
 
   tx_fee
 ;;
@@ -190,7 +193,7 @@ let verify_mainchain_block blockchain time block hash height =
   let rec verify_mainchain_block_acc_return_fees processed_txout tx_fees = function
     | [] -> tx_fees
     | tx :: txs ->
-      let tx_fee = verify_mainchain_tx_return_fee blockchain height processed_txout tx in
+      let tx_fee = verify_mainchain_tx_return_fee blockchain height time processed_txout tx in
       let hash = Bitcoin_protocol_generator.transaction_hash tx in
       let new_txouts = List.mapi (utxo_tuple_of_txout hash) tx.transaction_outputs in
       let processed_txout = List.fold_left (fun acc (key, value) -> TxOutMap.add key value acc) processed_txout new_txouts in

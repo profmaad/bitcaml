@@ -104,3 +104,13 @@ let block_creation_fee_at_height height =
   let reduction_intervals = Int64.to_int (Int64.div height block_fee_reduction_interval) in
   Int64.shift_right_logical initial_block_creation_fee reduction_intervals
 ;;
+
+let transaction_is_final height time tx =
+  if List.for_all (fun txin -> txin.transaction_sequence_number = 0xffffffffl) tx.transaction_inputs then
+    true
+  else
+    match tx.transaction_lock_time with
+    | AlwaysLockedTransaction -> true
+    | BlockLockedTransaction lock_height -> (Int64.of_int32 lock_height) < height
+    | TimestampLockedTransaction lock_time -> (Utils.time_difference lock_time time) < 0.
+;;
