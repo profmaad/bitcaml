@@ -63,7 +63,7 @@ let () =
   Bitcoin.Script.PP.print_script parsed_script;
   print_endline "DONE";
 
-  print_string "Sanity testing script generator against parser...\t"
+  print_string "Sanity testing script generator against parser...\t";
   let test_script = "\x76\xa9\x14\x2f\xef\x8e\xdc\xc4\x50\x19\xac\xba\x3b\xb1\x46\xb7\x6c\xbd\x2f\x84\x8b\xe5\xd6\x88\xac" in
   let parsed_script = Bitcoin.Script.Parser.parse_script (Bitstring.bitstring_of_string test_script) in
   let generated_script = Bitstring.string_of_bitstring (Bitcoin.Script.Generator.bitstring_of_script parsed_script) in
@@ -185,10 +185,8 @@ let () =
   (*     Bitcoin.Protocol.PP.print_block block; *)
   (*     ignore (Bitcoin.Blockchain.insert_block block.Bitcoin.Protocol.block_header blockchain_db)) *)
   (*   (List.rev Config.testnet3_initial_block_hashes); *)
-  
+
   print_string "Disconnecting from peer...\t\t\t";
   close_peer_connection peer_socket;
   print_endline "DONE"
 ;;
-  
-

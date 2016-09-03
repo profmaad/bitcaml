@@ -2,50 +2,50 @@ open Bitcoin_protocol;;
 open Bitstring;;
 
 let parse_header bits =
-  bitmatch bits with
-  | { magic : 4*8 : littleendian;
+  match%bitstring bits with
+  | {| magic : 4*8 : littleendian;
       command : 12*8 : string;
       payload_length : 4*8 : littleendian;
       checksum : 4*8 : string
-    } ->
+    |} ->
     {
       magic = magic_of_int32 magic;
       command = command_of_string (Utils.string_from_zeroterminated_string command);
       payload_length = (Int32.to_int payload_length);
       checksum = checksum;
     }
-  | { _ } -> Printf.eprintf "Received invalid bitcoin protocol header"; raise (Invalid_argument "Invalid bitcoin protocol header")
+  | {| _ |} -> Printf.eprintf "Received invalid bitcoin protocol header"; raise (Invalid_argument "Invalid bitcoin protocol header")
 ;;
 
 let parse_network_address bits =
-  bitmatch bits with 
-  | { services : 8*8 : littleendian;
+  match%bitstring bits with
+  | {| services : 8*8 : littleendian;
       address : 16*8 : string;
       port : 2*8 : bigendian
-    } ->
+    |} ->
     Some {
       services = services_set_of_int64 services;
       address = address;
       port = port;
     }
-  | { _ } -> None
+  | {| _ |} -> None
 ;;
 
 (* TODO: var_int parser. turns out, you can correctly parse a var_int by only looking at the initial byte *)
 let parse_varint bits =
-  let parse_tag_byte bits = 
-    bitmatch bits with
-    | { tag : 1*8 : littleendian;
+  let parse_tag_byte bits =
+    match%bitstring bits with
+    | {| tag : 1*8 : littleendian;
 	rest : -1 : bitstring
-      } -> (Some tag, rest)
-    | { _ } -> (None, bits)
+      |} -> (Some tag, rest)
+    | {| _ |} -> (None, bits)
   in
   let parse_value bits bytesize =
-    bitmatch bits with
-    | { value : bytesize*8 : littleendian;
+    match%bitstring bits with
+    | {| value : bytesize*8 : littleendian;
 	rest : -1 : bitstring
-      } -> (Some value, rest)
-    | { _ } -> (None, bits)
+      |} -> (Some value, rest)
+    | {| _ |} -> (None, bits)
   in
   let tag, rest = parse_tag_byte bits in
   match tag with
@@ -62,23 +62,23 @@ let parse_varstring bits =
   match length with
   | None -> (None, bits)
   | Some length ->
-    bitmatch bits with
-    | { value : (Int64.to_int length) * 8 : string;
+    match%bitstring bits with
+    | {| value : (Int64.to_int length) * 8 : string;
 	rest : -1 : bitstring
-      } -> (Some value, rest)
-    | { _ } -> (None, bits)
+      |} -> (Some value, rest)
+    | {| _ |} -> (None, bits)
 ;;
 
 (* This is kind of convoluted and horrible, but it's only partly our fault - the version message is kind of convoluted and horrible. *)
 let parse_version_message bits =
   let parse_version_message_v0 bits =
-    bitmatch bits with
-    | { version : 4*8 : littleendian;
+    match%bitstring bits with
+    | {| version : 4*8 : littleendian;
 	services : 8*8 : littleendian;
 	timestamp : 8*8 : littleendian;
 	addr_recv : 26*8 : bitstring;
 	rest : -1 : bitstring
-      } ->
+      |} ->
       let receiver_address = parse_network_address addr_recv in
       (
 	match receiver_address with
@@ -96,38 +96,38 @@ let parse_version_message bits =
 	    relay = None;
 	  }, rest)
       )
-    | { _ } -> (None, bits)
+    | {| _ |} -> (None, bits)
   in
 
   let parse_version_message_v106 message bits =
-    bitmatch bits with
-    | { addr_from : 26*8 : bitstring;
+    match%bitstring bits with
+    | {| addr_from : 26*8 : bitstring;
 	nonce : 8*8 : littleendian;
 	user_agent : ((bitstring_length bits) - (26+8+4 + (if message.protocol_version >= 70001 then 1 else 0))*8) : bitstring; (* we could properly parse a var_string at this position, but that would involve splitting this parser in two again. For version messages, we can determine the length of the var_string so we parse it out as a bitstring here and then extract the actual string below *)
 	start_height : 4*8 : littleendian;
 	rest : -1 : bitstring
-      } ->
+      |} ->
       let sender_address = parse_network_address addr_from in
       (
 	match sender_address with
 	| None -> (None, rest)
 	| Some sender_address ->
-	  (Some { message with 
+	  (Some { message with
 	    sender_address = Some sender_address;
 	    random_nonce = Some nonce;
 	    user_agent = fst (parse_varstring user_agent);
 	    start_height = Some (Int32.to_int start_height);
           }, rest)
       )
-    | { _ } -> (Some message, bits)
+    | {| _ |} -> (Some message, bits)
   in
 
-  let parse_version_message_v70001 message bits = 
-    bitmatch bits with
-    | { relay : 1*8 : littleendian;
+  let parse_version_message_v70001 message bits =
+    match%bitstring bits with
+    | {| relay : 1*8 : littleendian;
 	rest : -1 : bitstring
-      } -> (Some { message with relay = Some (relay > 0) }, rest)
-    | { _ } -> (Some message, bits)
+      |} -> (Some { message with relay = Some (relay > 0) }, rest)
+    | {| _ |} -> (Some message, bits)
   in
   let message, rest = parse_version_message_v0 bits in
   match message with
@@ -137,7 +137,7 @@ let parse_version_message bits =
     (
       match message with
       | None -> None
-      | Some message when message.protocol_version >= 70001 -> 
+      | Some message when message.protocol_version >= 70001 ->
 	let message, rest = parse_version_message_v70001 message rest in
 	(
 	  match message with
@@ -154,11 +154,11 @@ let parse_verack_message bits = Some VerAckPayload;;
 let parse_addr_message protocol_version bits =
   let rec parse_addresses timestamp_size count index bits =
     if index >= count then [] else
-      bitmatch bits with
-      | { timestamp : timestamp_size : littleendian;
+      match%bitstring bits with
+      | {| timestamp : timestamp_size : littleendian;
 	  network_address_struct : 26*8 : bitstring;
 	  rest : -1 : bitstring
-	} ->
+	|} ->
 	( match parse_network_address network_address_struct with
 	| None -> []
 	| Some network_address ->
@@ -167,9 +167,9 @@ let parse_addr_message protocol_version bits =
 	    network_address = network_address;
 	  } :: parse_addresses timestamp_size count (Int64.add index 1L) rest
 	)
-      | { _ } -> []
+      | {| _ |} -> []
   in
-  
+
   match parse_varint bits with
   | None, rest -> None
   | Some address_count, bits ->
@@ -184,17 +184,17 @@ let parse_getaddr_message bits = Some GetAddrPayload;;
 let parse_inventory_list_message bits =
   let rec parse_inventory_list count index bits =
     if index >= count then [] else
-      bitmatch bits with
-      | { item_type : 4*8 : littleendian;
+      match%bitstring bits with
+      | {| item_type : 4*8 : littleendian;
 	  hash : 32*8 : string;
 	  rest : -1 : bitstring
-	} ->
+	|} ->
 	{
 	  inventory_item_type = inventory_item_type_of_int32 item_type;
 	  inventory_item_hash = hash;
 	} :: parse_inventory_list count (Int64.add index 1L) rest
-      | { _ } -> []
-  in	
+      | {| _ |} -> []
+  in
   match parse_varint bits with
   | None, rest -> None
   | Some inventory_count, bits ->
@@ -221,18 +221,18 @@ let parse_notfound_message bits =
 let parse_block_locator_list_message bits =
   let rec parse_block_locator_list count index acc bits =
     if index >= count then (acc, bits) else
-      bitmatch bits with
-      | { block_locator_hash : 32*8 : string;
+      match%bitstring bits with
+      | {| block_locator_hash : 32*8 : string;
 	  rest : -1 : bitstring
-	} ->
+	|} ->
 	parse_block_locator_list count (Int64.add index 1L) (block_locator_hash :: acc) rest
-      | { _ } -> (acc, bits)
+      | {| _ |} -> (acc, bits)
   in
-  let protocol_version, bits = bitmatch bits with
-    | { version : 4*8 : littleendian;
+  let protocol_version, bits = match%bitstring bits with
+    | {| version : 4*8 : littleendian;
 	rest : -1 : bitstring
-      } -> (Some version, rest)
-    | { _ } -> (None, bits)
+      |} -> (Some version, rest)
+    | {| _ |} -> (None, bits)
   in
   match protocol_version with
   | None -> None
@@ -243,14 +243,14 @@ let parse_block_locator_list_message bits =
       let block_locator_list, bits = parse_block_locator_list block_locator_count 0L [] bits in
       if ((List.length block_locator_list) <> (Int64.to_int block_locator_count)) then None
       else
-	bitmatch bits with
-	| { block_locator_hash_stop : 32*8 : string } ->
+	match%bitstring bits with
+	| {| block_locator_hash_stop : 32*8 : string |} ->
 	  Some {
 	    block_protocol_version = Int32.to_int protocol_version;
 	    block_locator_hashes = List.rev block_locator_list;
 	    block_locator_hash_stop = block_locator_hash_stop;
 	  }
-	| { _ } -> None
+	| {| _ |} -> None
 ;;
 let parse_getblocks_message bits =
   match parse_block_locator_list_message bits with
@@ -264,38 +264,38 @@ let parse_getheaders_message bits =
 ;;
 
 let parse_transaction bits =
-  let rec parse_inputs count index acc bits = 
+  let rec parse_inputs count index acc bits =
     if index >= count then (acc, bits) else
-      bitmatch bits with
-      | { outpoint_hash : 32*8 : string;
+      match%bitstring bits with
+      | {| outpoint_hash : 32*8 : string;
 	  outpoint_index : 4*8 : littleendian;
 	  rest : -1 : bitstring
-	} ->
+	|} ->
 	( match parse_varstring rest with
 	| None, bits -> (acc, bits)
 	| Some signature_script, bits ->
-	  bitmatch bits with
-	  | { sequence_number : 4*8 : littleendian;
+	  match%bitstring bits with
+	  | {| sequence_number : 4*8 : littleendian;
 	      rest : -1 : bitstring
-	    } ->
+	    |} ->
 	    let input = {
 	      previous_transaction_output = { referenced_transaction_hash = outpoint_hash;
 					      transaction_output_index = outpoint_index;
 					    };
 	      signature_script = signature_script;
 	      transaction_sequence_number = sequence_number;
-	    } in 
+	    } in
 	    parse_inputs count (Int64.add index 1L) (input :: acc) rest
-	  | { _ } -> (acc, bits)
+	  | {| _ |} -> (acc, bits)
 	)
-      | { _ } -> (acc, bits)
+      | {| _ |} -> (acc, bits)
   in
   let rec parse_outputs count index acc bits =
     if index >= count then (acc, bits) else
-      bitmatch bits with
-      | { value : 8*8 : littleendian;
+      match%bitstring bits with
+      | {| value : 8*8 : littleendian;
 	  rest : -1 : bitstring
-	} -> 
+	|} ->
 	match parse_varstring rest with
 	| None, bits -> (acc, bits)
 	| Some output_script, rest ->
@@ -305,11 +305,11 @@ let parse_transaction bits =
 	  } in
 	  parse_outputs count (Int64.add index 1L) (output :: acc) rest
   in
-  let data_format_version, bits = bitmatch bits with
-    | { version : 4*8 : littleendian;
+  let data_format_version, bits = match%bitstring bits with
+    | {| version : 4*8 : littleendian;
 	rest : -1 : bitstring
-      } -> (Some version, rest)
-    | { _ } -> (None, bits)
+      |} -> (Some version, rest)
+    | {| _ |} -> (None, bits)
   in
   match data_format_version with
   | None -> (None, bits)
@@ -327,16 +327,16 @@ let parse_transaction bits =
 	  ((List.length outputs) <> (Int64.to_int output_count))
 	then (None, bits)
 	else
-	  bitmatch bits with
-	  | { lock_time : 4*8 : littleendian;
-	      rest : -1 : bitstring } ->
+	  match%bitstring bits with
+	  | {| lock_time : 4*8 : littleendian;
+	      rest : -1 : bitstring |} ->
 	    (Some {
 	      transaction_data_format_version = Int32.to_int data_format_version;
 	      transaction_inputs = List.rev inputs;
 	      transaction_outputs = List.rev outputs;
 	      transaction_lock_time = transaction_lock_time_of_int32 lock_time;
 	    }, rest)
-	  | { _ } -> (None, bits)
+	  | {| _ |} -> (None, bits)
 ;;
 let parse_tx_message bits =
   match parse_transaction bits with
@@ -344,16 +344,16 @@ let parse_tx_message bits =
   | Some transaction, _ -> Some (TxPayload transaction)
 ;;
 
-let parse_block_header bits = 
-  bitmatch bits with
-  | { version : 4*8 : littleendian;
+let parse_block_header bits =
+  match%bitstring bits with
+  | {| version : 4*8 : littleendian;
       previous_block_hash : 32*8 : string;
       merkle_root : 32*8 : string;
       timestamp : 4*8 : littleendian;
       difficulty_target : 4*8 : littleendian;
       nonce : 4*8 : littleendian;
       rest : -1 : bitstring
-    } ->
+    |} ->
     (Some {
       block_version = Int32.to_int version;
       previous_block_hash = previous_block_hash;
@@ -362,7 +362,7 @@ let parse_block_header bits =
       block_difficulty_target = difficulty_bits_of_int32 difficulty_target;
       block_nonce = nonce;
     }, rest)
-  | { _ } -> (None, bits)
+  | {| _ |} -> (None, bits)
 ;;
 let parse_protocol_block_header bits =
   match parse_block_header bits with
@@ -375,7 +375,7 @@ let parse_protocol_block_header bits =
 	basic_block_header = block_header;
 	block_transaction_count = transaction_count;
       }, bits)
-;;    
+;;
 let parse_block bits =
   let rec parse_transaction_list count index acc bits =
     if index >= count then (acc, bits) else
@@ -424,12 +424,12 @@ let parse_headers_message bits =
 let parse_mempool_message payload_bitstring = Some MemPoolPayload;;
 
 let parse_nonce_message bits =
-  bitmatch bits with
-  | { nonce : 8*8 : littleendian } ->
+  match%bitstring bits with
+  | {| nonce : 8*8 : littleendian |} ->
     Some {
       message_nonce = nonce;
     }
-  | { _ } -> None
+  | {| _ |} -> None
 ;;
 let parse_ping_message bits =
   match parse_nonce_message bits with
@@ -446,10 +446,10 @@ let parse_reject_message bits =
   match parse_varstring bits with
   | None, _ -> None
   | Some rejected_message, bits ->
-    bitmatch bits with
-    | { rejection_code : 1*8 : littleendian;
+    match%bitstring bits with
+    | {| rejection_code : 1*8 : littleendian;
 	rest : -1 : bitstring
-      } ->
+      |} ->
       ( match parse_varstring rest with
       | None, _ -> None
       | Some rejection_reason, _ ->
@@ -459,7 +459,7 @@ let parse_reject_message bits =
 	  rejection_reason = rejection_reason;
 	})
       )
-    | { _ } -> None
+    | {| _ |} -> None
 ;;
 
 let parse_payload protocol_version payload_bitstring = function

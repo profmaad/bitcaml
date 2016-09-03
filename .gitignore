@@ -15,6 +15,7 @@ setup.log
 *.cmx
 *.cmxs
 *.cmxa
+*.merlin
 
 # oasis artifacts
 Makefile
@@ -25,3 +26,31 @@ META
 *.odocl
 *.mldylib
 *.mllib
+
+# jenga artifacts
+libmap.sexp
+libmap_unstable.sexp
+*.ml.d
+*.mli.d
+*.cmi.deps
+*.inferred-1step.deps
+*.external-include-flags
+*.external-archives
+*.ml-gen
+*.libdeps
+*.objdeps
+*.moduledeps
+*.jsdeps
+*.deps
+*.cmt
+*.cmti
+*.modules
+*.stub.names
+*.out
+*.exe
+*.pack-order
+lib/js_of_ocaml_stubs.c
+.findlib-packages
+.jenga
+.omake-ocaml-bin
+.opam-bin

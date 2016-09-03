@@ -10,18 +10,18 @@ let ensure_string_length s length =
     String.make (length - (String.length s)) '\x00' ^ s
 ;;
 let parse_der_signature bits =
-  bitmatch bits with
-  | { "\x30" : 1*8 : string;
-      overall_length : 1*8 : littleendian;
-      "\x02" : 1*8 : string;
-      r_length : 1*8 : littleendian;
-      r : r_length * 8 : string;
-      "\x02" : 1*8 : string;
-      s_length : 1*8 : littleendian;
-      s : s_length * 8 : string
-    } ->
+  match%bitstring bits with
+  | {| "\x30"         : 1*8          : string
+     ; overall_length : 1*8          : littleendian
+     ; "\x02"         : 1*8          : string
+     ; r_length       : 1*8          : littleendian
+     ; r              : r_length * 8 : string
+     ; "\x02"         : 1*8          : string
+     ; s_length       : 1*8          : littleendian
+     ; s              : s_length * 8 : string
+    |} ->
     Some (r, s)
-  | { _ } -> None
+  | {| _ |} -> None
 ;;
 
 let extract_public_key s =

@@ -16,9 +16,9 @@ Executable "bitcaml"
   BuildDepends:
     threads,
     bitstring,
-    bitstring.syntax,
+    ppx_bitstring,
+    ppx_bitstring.ext,
     sha,
     sqlexpr,
-    sqlexpr.syntax,
     cryptokit,
     microecc

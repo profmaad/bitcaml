@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: bf349c6bf6e9ec96534399e81a1d6138)
+# DO NOT EDIT (digest: 6f490bc3d0cfad6a2e8a66e58390cae8)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -16,19 +16,19 @@ true: annot, bin_annot
 "_darcs": not_hygienic
 # Executable bitcaml
 "src/main.byte": pkg_bitstring
-"src/main.byte": pkg_bitstring.syntax
 "src/main.byte": pkg_cryptokit
 "src/main.byte": pkg_microecc
+"src/main.byte": pkg_ppx_bitstring
+"src/main.byte": pkg_ppx_bitstring.ext
 "src/main.byte": pkg_sha
 "src/main.byte": pkg_sqlexpr
-"src/main.byte": pkg_sqlexpr.syntax
 "src/main.byte": pkg_threads
 <src/*.ml{,i,y}>: pkg_bitstring
-<src/*.ml{,i,y}>: pkg_bitstring.syntax
 <src/*.ml{,i,y}>: pkg_cryptokit
 <src/*.ml{,i,y}>: pkg_microecc
+<src/*.ml{,i,y}>: pkg_ppx_bitstring
+<src/*.ml{,i,y}>: pkg_ppx_bitstring.ext
 <src/*.ml{,i,y}>: pkg_sha
 <src/*.ml{,i,y}>: pkg_sqlexpr
-<src/*.ml{,i,y}>: pkg_sqlexpr.syntax
 <src/*.ml{,i,y}>: pkg_threads
 # OASIS_STOP

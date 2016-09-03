@@ -2,12 +2,12 @@ open Bitstring;;
 open Bitcoin_script;;
 
 let parse_int bytes bits =
-  bitmatch bits with
-  | { i : bytes * 8 : littleendian;
-      rest : -1 : bitstring
-    } ->
-    (i, rest)
-  | { _ } -> raise Malformed_script
+  match%bitstring bits with
+  | {| i : bytes * 8 : littleendian;
+     rest : -1 : bitstring
+     |} ->
+     (i, rest)
+  | {| _ |} -> raise Malformed_script
 ;;
 
 let parse_data opcode bits =
@@ -38,14 +38,14 @@ let parse_opcode opcode bits =
 ;;
 
 let parse_script bits =
-  let rec parse_script_acc acc bits = 
-    bitmatch bits with
-    | { opcode : 1*8 : littleendian;
+  let rec parse_script_acc acc bits =
+    match%bitstring bits with
+    | {| opcode : 1*8 : littleendian;
 	rest : -1 : bitstring
-      } -> 
-      let word, bits = parse_opcode opcode rest in
-      parse_script_acc (word :: acc) bits
-    | { _ } -> acc
+       |} ->
+       let word, bits = parse_opcode opcode rest in
+       parse_script_acc (word :: acc) bits
+    | {| _ |} -> acc
   in
   List.rev (parse_script_acc [] bits)
 ;;
