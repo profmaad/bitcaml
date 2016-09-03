@@ -64,4 +64,4 @@ Since it doesn't have wallet functionality, you can't use it on your funds anywa
 
 Copyright
 =========
-Copyright 2014 by Maximilian Wolter (Prof. MAAD)
+Copyright 2014-2016 by Maximilian Wolter (Prof. MAAD)

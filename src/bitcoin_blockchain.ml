@@ -142,7 +142,7 @@ let verify_txin_return_value blockchain height tx txin_index txin spent_output =
 
     (* Using the referenced output transactions to get input values, check that each input value, as well as the sum, are in legal money range *)
     if not (legal_money_range utxo.DB.UTxO.value) then raise (Rejected ("bad-txns-inputvalues-outofrange", RejectionInvalid));
-    
+
     (* Verify crypto signatures for each input; reject if any are bad *)
     verify_transaction_script (tx, txin_index) txin.signature_script utxo.DB.UTxO.script;
 
@@ -202,7 +202,7 @@ let verify_mainchain_block blockchain time block hash height =
   in
 
   if block_has_duplicate_txins block then raise (Rejected ("bad-txns-inputs-duplicate", RejectionInvalid));
-  
+
   let processed_txout = TxOutMap.empty in
   let tx_fees = verify_mainchain_block_acc_return_fees processed_txout 0L (List.tl block.block_transactions) in
   let expected_coinbase_value = Int64.add (block_creation_fee_at_height height) tx_fees in
@@ -250,17 +250,17 @@ let verify_block blockchain time block hash =
   if not (DB.Block.hash_exists blockchain.db previous_hash) then raise BlockIsOrphan;
 
   let previous_block_height = (Option.get (DB.Block.retrieve_by_hash blockchain.db previous_hash)).DB.Block.height in
-  
+
   (* 12. Check that nBits value matches the difficulty rules *)
   (* we know it must exist because we just checked it - at least as long as there is no concurrency *)
-  let expected_blockchain_height = Int64.add 1L previous_block_height in 
+  let _expected_blockchain_height = Int64.add 1L previous_block_height in
   (* if (Int64.rem expected_blockchain_height (Int64.of_int difficulty_change_interval)) = 0L then verify_difficulty_change blockchain hash previous_hash block.block_header; *)
   (* TODO: REENABLE, doesn't behave well on testnet *)
 
   (* 13. Reject if timestamp is the median time of the last 11 blocks or before *)
   (* if not (validate_block_timestamp blockchain hash block.block_header) then raise (Rejected ("time-too-old", RejectionInvalid)); *)
   (* TODO: REENABLE, doesn't behave well on testnet though *)
-  
+
   (* skip check 14 since we don't have checkpoints *)
   ()
 ;;
@@ -348,7 +348,7 @@ let rec handle_block blockchain time block =
   let hash = Bitcoin_protocol_generator.block_hash header in
   let log_difficulty = DB.log_difficulty_of_difficulty_bits header.block_difficulty_target in
 
-  let insert_block () = 
+  let insert_block () =
     ( match DB.insert_block_into_blockchain hash header.previous_block_hash log_difficulty header blockchain.db with
     | DB.NotInsertedExisted -> raise BlockIsDuplicate
     | DB.InsertionFailed -> failwith "Block insertion failed at DB layer"

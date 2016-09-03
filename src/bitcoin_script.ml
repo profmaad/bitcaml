@@ -300,7 +300,7 @@ let data_item_byte byte item =
 ;;
 let data_item_set_byte byte value item =
   let index = if byte < 0 then (data_item_length item) + byte else byte in
-  item.[index] <- (Char.chr value)
+  Bytes.set item index (Char.chr value)
 ;;
 
 let int64_of_data_item item =
@@ -315,7 +315,7 @@ let int64_of_data_item item =
   match data_item_length item with
   | 0 -> Some 0L
   | i when (i > 9) -> None
-  | _ -> 
+  | _ ->
     let negative = ((data_item_byte (-1) item) land 0x80) > 0 in
     let raw_value = process_byte 0x00L 0 item in
     (* MSB >= 0x80 means negative sign *)
@@ -342,7 +342,7 @@ let data_item_of_int64 i =
   if (data_item_length bytes) = 0 then bytes
   else (
     if ((data_item_byte (-1) bytes) land 0x80) > 0 then
-      bytes ^ (String.make 1 (if negative then '\x80' else '\x00'))    
+      bytes ^ (String.make 1 (if negative then '\x80' else '\x00'))
     else (
       if negative then (
 	let msb = data_item_byte (-1) bytes in

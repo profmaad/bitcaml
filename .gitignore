@@ -16,3 +16,12 @@ setup.log
 *.cmxs
 *.cmxa
 
+# oasis artifacts
+Makefile
+configure
+myocamlbuild.ml
+setup.ml
+META
+*.odocl
+*.mldylib
+*.mllib
