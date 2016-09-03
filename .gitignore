@@ -16,6 +16,7 @@ setup.log
 *.cmxs
 *.cmxa
 *.merlin
+*~
 
 # oasis artifacts
 Makefile
