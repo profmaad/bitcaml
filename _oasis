@@ -20,5 +20,6 @@ Executable "bitcaml"
     ppx_bitstring.ext,
     sha,
     sqlexpr,
+    sqlexpr.ppx,
     cryptokit,
     microecc

@@ -6,18 +6,18 @@ let local_version () =
   let receiver_address = {
     Bitcoin.Protocol.services = services_set;
     address = localhost_address_string;
-    port = Config.peer_port;
+    port = Bitcaml_config.peer_port;
   } in
   let sender_address = receiver_address in
   let random_nonce = Random.int64 Int64.max_int in
   {
-    Bitcoin.Protocol.protocol_version = Config.bitcoin_protocol_version;
+    Bitcoin.Protocol.protocol_version = Bitcaml_config.bitcoin_protocol_version;
     node_services = services_set;
     timestamp = Unix.localtime (Unix.time ());
     receiver_address = receiver_address;
     sender_address = Some sender_address;
     random_nonce = Some random_nonce;
-    user_agent = Some Config.user_agent;
+    user_agent = Some Bitcaml_config.user_agent;
     start_height = Some 0;
     relay = Some false;
   }
@@ -42,11 +42,11 @@ let () =
   Random.self_init ();
 
   print_string "Sanity testing genesis block against its own hash...\t";
-  let calculated_genesis_hash = Bitcoin.Protocol.Generator.block_hash Config.testnet3_genesis_block_header in
-  if calculated_genesis_hash = Config.testnet3_genesis_block_hash then
+  let calculated_genesis_hash = Bitcoin.Protocol.Generator.block_hash Bitcaml_config.testnet3_genesis_block_header in
+  if calculated_genesis_hash = Bitcaml_config.testnet3_genesis_block_hash then
     print_endline "PASSED"
   else (
-    Printf.printf"FAILED: %s != %s\n" calculated_genesis_hash Config.testnet3_genesis_block_hash;
+    Printf.printf"FAILED: %s != %s\n" calculated_genesis_hash Bitcaml_config.testnet3_genesis_block_hash;
     exit 1;
   );
 
@@ -151,12 +151,12 @@ let () =
     print_endline "PASSED"
   );
 
-  Printf.printf "Opening and initializing blockchain at %s...\t" Config.testnet3_folder;
-  let blockchain = Bitcoin.Blockchain.init_default Config.testnet3_folder in
+  Printf.printf "Opening and initializing blockchain at %s...\t" Bitcaml_config.testnet3_folder;
+  let blockchain = Bitcoin.Blockchain.init_default Bitcaml_config.testnet3_folder in
   print_endline "DONE";
 
   print_string "Establishing TCP connection to peer...\t\t";
-  let peer_socket = connect_to_peer Config.peer_ip_address Config.peer_port in
+  let peer_socket = connect_to_peer Bitcaml_config.peer_ip_address Bitcaml_config.peer_port in
   print_endline "DONE";
 
   let peer = {
@@ -171,7 +171,7 @@ let () =
   Bitcoin.Peer.handle_peer peer;
 
   (* print_string "Retrieving TestNet3 genesis block...\t\t"; *)
-  (* ( match Bitcoin.Peer.get_block peer Config.testnet3_genesis_block_hash with *)
+  (* ( match Bitcoin.Peer.get_block peer Bitcaml_config.testnet3_genesis_block_hash with *)
   (* | None -> print_endline "FAILED" *)
   (* | Some block -> print_endline "PASSED"; Bitcoin.Protocol.PP.print_block block *)
   (* ); *)
@@ -184,7 +184,7 @@ let () =
   (*     print_endline "PASSED"; *)
   (*     Bitcoin.Protocol.PP.print_block block; *)
   (*     ignore (Bitcoin.Blockchain.insert_block block.Bitcoin.Protocol.block_header blockchain_db)) *)
-  (*   (List.rev Config.testnet3_initial_block_hashes); *)
+  (*   (List.rev Bitcaml_config.testnet3_initial_block_hashes); *)
 
   print_string "Disconnecting from peer...\t\t\t";
   close_peer_connection peer_socket;

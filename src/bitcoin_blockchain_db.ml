@@ -519,8 +519,8 @@ let insert_block_as_orphan hash previous_block_hash log_difficulty header db =
 
 (* we need a special implementation for this, since no previous block exists for the genesis block *)
 let insert_genesis_block db =
-  let hash = Config.testnet3_genesis_block_hash in
-  let header = Config.testnet3_genesis_block_header in
+  let hash = Bitcaml_config.testnet3_genesis_block_hash in
+  let header = Bitcaml_config.testnet3_genesis_block_header in
   let log_difficulty = log_difficulty_of_difficulty_bits header.block_difficulty_target in
   if not (Block.hash_exists db hash) then
     let record_id = Block.insert db {

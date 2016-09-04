@@ -14,48 +14,40 @@ let bitstring_of_data_word opcode data_item =
     | 0x4c ->
       if length > 0xff then raise Malformed_script
       else
-        let%bitstring bs =
-          {| length                           : 1*8 : littleendian
-           ; bitstring_of_data_item data_item :  -1 : bitstring
-           |}
-        in
-        bs
+        [%bitstring
+            {| length                           : 1*8 : littleendian
+             ; bitstring_of_data_item data_item :  -1 : bitstring
+             |}
+        ]
     | 0x4d ->
       if length > 0xffff then raise Malformed_script
       else
-	let%bitstring bs =
-          {| length : 2*8 : littleendian;
-	   bitstring_of_data_item data_item : -1 : bitstring
-	   |}
-        in
-        bs
+	[%bitstring
+            {| length : 2*8 : littleendian;
+	     bitstring_of_data_item data_item : -1 : bitstring
+	     |}
+        ]
     | 0x4e ->
       if length > 0xffffffff then raise Malformed_script
       else
-	let%bitstring bs =
-          {| Int32.of_int length : 4*8 : littleendian;
-	   bitstring_of_data_item data_item : -1 : bitstring
-	   |}
-        in
-        bs
+	[%bitstring
+            {| Int32.of_int length : 4*8 : littleendian;
+	     bitstring_of_data_item data_item : -1 : bitstring
+	     |}
+        ]
+
     | _ -> raise Malformed_script
   in
-  let%bitstring bs =
-    {| opcode : 1*8 : littleendian;
-     payload : -1 : bitstring
-     |}
-  in
-  bs
+  [%bitstring
+      {| opcode : 1*8 : littleendian;
+       payload : -1 : bitstring
+       |}
+  ]
 ;;
 
 let bitstring_of_word = function
   | Data (opcode, data_item) -> bitstring_of_data_word opcode data_item
-  | word ->
-     let%bitstring bs =
-       {| opcode_of_word word : 1*8 : littleendian
-        |}
-     in
-     bs
+  | word -> [%bitstring {| opcode_of_word word : 1*8 : littleendian |}]
 ;;
 
 let bitstring_of_script script =
