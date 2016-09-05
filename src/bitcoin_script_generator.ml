@@ -23,24 +23,24 @@ let bitstring_of_data_word opcode data_item =
       if length > 0xffff then raise Malformed_script
       else
 	[%bitstring
-            {| length : 2*8 : littleendian;
-	     bitstring_of_data_item data_item : -1 : bitstring
+            {| length : 2*8 : littleendian
+	     ; bitstring_of_data_item data_item : -1 : bitstring
 	     |}
         ]
     | 0x4e ->
       if length > 0xffffffff then raise Malformed_script
       else
 	[%bitstring
-            {| Int32.of_int length : 4*8 : littleendian;
-	     bitstring_of_data_item data_item : -1 : bitstring
+            {| Int32.of_int length : 4*8 : littleendian
+	     ; bitstring_of_data_item data_item : -1 : bitstring
 	     |}
         ]
 
     | _ -> raise Malformed_script
   in
   [%bitstring
-      {| opcode : 1*8 : littleendian;
-       payload : -1 : bitstring
+      {| opcode : 1*8 : littleendian
+       ; payload : -1 : bitstring
        |}
   ]
 ;;
