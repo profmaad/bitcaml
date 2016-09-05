@@ -1,3 +1,4 @@
+open! Core.Std
 open Bitcoin_protocol;;
 
 module Sqlexpr = Sqlexpr_sqlite.Make(Sqlexpr_concurrency.Id);;
@@ -140,27 +141,27 @@ module Block = struct
       [%sqlc "SELECT @L{id}, @s{hash}, @L{height}, @L{previous_block}, @f{cumulative_log_difficulty}, @b{is_main}, @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce}, @s{IFNULL((SELECT hash FROM blockchain WHERE id = previous_block LIMIT 1), X'0000000000000000000000000000000000000000000000000000000000000000')} FROM blockchain WHERE id = %L"]
       id
     in
-    Option.map from_result result
+    Option.map ~f:from_result result
   ;;
   let retrieve_by_hash db hash =
     let result = S.select_one_maybe db
       [%sqlc "SELECT @L{id}, @s{hash}, @L{height}, @L{previous_block}, @f{cumulative_log_difficulty}, @b{is_main}, @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce}, @s{IFNULL((SELECT hash FROM blockchain WHERE id = previous_block LIMIT 1), X'0000000000000000000000000000000000000000000000000000000000000000')} FROM blockchain WHERE hash = %s"]
       hash
     in
-    Option.map from_result result
+    Option.map ~f:from_result result
   ;;
   let retrieve_mainchain_tip db =
     let result = S.select_one_maybe db
       [%sqlc "SELECT @L{id}, @s{hash}, @L{height}, @L{previous_block}, @f{cumulative_log_difficulty}, @b{is_main}, @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce}, @s{IFNULL((SELECT hash FROM blockchain WHERE id = previous_block LIMIT 1), X'0000000000000000000000000000000000000000000000000000000000000000')} FROM blockchain WHERE is_main = 1 ORDER BY cumulative_log_difficulty DESC, height DESC"]
     in
-    Option.map from_result result
+    Option.map ~f:from_result result
   ;;
   let retrieve_mainchain_block_at_height db height =
     let result = S.select_one_maybe db
     [%sqlc "SELECT @L{id}, @s{hash}, @L{height}, @L{previous_block}, @f{cumulative_log_difficulty}, @b{is_main}, @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce}, @s{IFNULL((SELECT hash FROM blockchain WHERE id = previous_block LIMIT 1), X'0000000000000000000000000000000000000000000000000000000000000000')} FROM blockchain WHERE height = %L AND is_main = 1 ORDER BY cumulative_log_difficulty DESC"]
     height
     in
-    Option.map from_result result
+    Option.map ~f:from_result result
   ;;
 
   let hash_exists db hash =
@@ -215,21 +216,21 @@ module Orphan = struct
       [%sqlc "SELECT @L{id}, @s{hash}, @s{previous_block_hash}, @f{log_difficulty}, @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce} FROM orphans WHERE id = %L"]
       id
     in
-    Option.map from_result result
+    Option.map ~f:from_result result
   ;;
   let retrieve_by_hash db hash =
     let result = S.select_one_maybe db
       [%sqlc "SELECT @L{id}, @s{hash}, @s{previous_block_hash}, @f{log_difficulty}, @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce} FROM orphans WHERE hash = %s"]
       hash
     in
-    Option.map from_result result
+    Option.map ~f:from_result result
   ;;
   let retrieve_by_previous_block_hash db previous_block_hash =
     let results = S.select db
       [%sqlc "SELECT @L{id}, @s{hash}, @s{previous_block_hash}, @f{log_difficulty} @d{block_version}, @s{merkle_root}, @L{timestamp}, @l{difficulty_bits}, @l{nonce} FROM orphans WHERE previous_block_hash = %s"]
       previous_block_hash
     in
-    List.map from_result results
+    List.map ~f:from_result results
   ;;
 
   let hash_exists db hash =
@@ -285,7 +286,7 @@ module UnspentTransactionOutput = struct
       hash
       output_index
     in
-    Option.map from_result result
+    Option.map ~f:from_result result
   ;;
 
   let delete_by_hash db hash =
@@ -338,7 +339,7 @@ module MemoryPool = struct
       [%sqlc "SELECT @L{id}, @s{hash}, @l{output_count}, @b{is_orphan}, @S{data} FROM memory_pool WHERE hash = %s"]
       hash
     in
-    Option.map from_result result
+    Option.map ~f:from_result result
   ;;
 
   let delete_by_hash db hash =
@@ -376,9 +377,9 @@ let rec nth_predecessor_by_id db id n =
     if n = 0L then Some block
     else
       if block.Block.is_main then
-	Block.retrieve_mainchain_block_at_height db (max 0L (Int64.sub block.Block.height n))
+	Block.retrieve_mainchain_block_at_height db (max 0L (Int64.(-) block.Block.height n))
       else
-	nth_predecessor_by_id db block.Block.previous_block_id (Int64.sub n 1L)
+	nth_predecessor_by_id db block.Block.previous_block_id (Int64.(-) n 1L)
 ;;
 let nth_predecessor db hash n =
   match Block.retrieve_by_hash db hash with
@@ -440,7 +441,7 @@ let block_exists_anywhere db hash =
 ;;
 
 let delete_block_transactions_from_mempool db block =
-  List.iter (MemoryPool.delete_by_hash db) (List.map Bitcoin_protocol_generator.transaction_hash block.block_transactions)
+  List.iter ~f:(MemoryPool.delete_by_hash db) (List.map ~f:Bitcoin_protocol_generator.transaction_hash block.block_transactions)
 ;;
 
 let update_utxo_with_transaction db block_id tx_index tx =
@@ -450,7 +451,7 @@ let update_utxo_with_transaction db block_id tx_index tx =
     {
       UTxO.id = 0L;
       hash = hash;
-      output_index = Int32.of_int txout_index;
+      output_index = Int32.of_int_exn txout_index;
       block_id = block_id;
       value = txout.transaction_output_value;
       script = txout.output_script;
@@ -458,11 +459,11 @@ let update_utxo_with_transaction db block_id tx_index tx =
     }
   in
 
-  let spent_outpoints = List.map (fun txin -> (txin.previous_transaction_output.referenced_transaction_hash, txin.previous_transaction_output.transaction_output_index)) tx.transaction_inputs in
-  let created_outpoints = List.mapi outpoint_of_txout tx.transaction_outputs in
+  let spent_outpoints = List.map ~f:(fun txin -> (txin.previous_transaction_output.referenced_transaction_hash, txin.previous_transaction_output.transaction_output_index)) tx.transaction_inputs in
+  let created_outpoints = List.mapi ~f:outpoint_of_txout tx.transaction_outputs in
 
-  List.iter (fun (hash, index) -> UTxO.delete_by_hash_and_index db hash index) spent_outpoints;
-  List.iter (fun utxo -> ignore (UTxO.insert db utxo)) created_outpoints
+  List.iter ~f:(fun (hash, index) -> UTxO.delete_by_hash_and_index db hash index) spent_outpoints;
+  List.iter ~f:(fun utxo -> ignore (UTxO.insert db utxo)) created_outpoints
 ;;
 (* since a transaction can spend an output that only appeard in the same block, we have to handle transactions in order *)
 let update_utxo_with_block db block hash =
@@ -470,7 +471,7 @@ let update_utxo_with_block db block hash =
   match Block.retrieve_by_hash db hash with
   | None -> failwith "tried to update UTxO for non-existant block"
   | Some db_block ->
-    List.iteri (S.transaction db (fun db -> update_utxo_with_transaction db db_block.Block.id)) block.block_transactions;
+    List.iteri ~f:(S.transaction db (fun db -> update_utxo_with_transaction db db_block.Block.id)) block.block_transactions;
     Printf.printf "[DB] finished UTxO update for block %s\n%!" (Utils.hex_string_of_hash_string hash);
 ;;
 
@@ -482,7 +483,7 @@ let register_transactions_for_block db block block_id =
       block_id
       tx_index
   in
-  List.iteri register_tx block.block_transactions
+  List.iteri ~f:register_tx block.block_transactions
 ;;
 
 let insert_block_into_blockchain hash previous_block_hash log_difficulty header db =

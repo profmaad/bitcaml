@@ -1,3 +1,4 @@
+open! Core.Std
 open Bitstring;;
 
 let curve = Microecc.Curve.secp256k1 ()

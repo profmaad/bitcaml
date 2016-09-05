@@ -1,13 +1,14 @@
-open Bitcoin_protocol;;
-open Bitstring;;
+open Core.Std
+open Bitcoin_protocol
+open Bitstring
 
 let default_random_nonce = 0x0000deadbeef0000L;;
 
-let bitstring_of_header header =
+let bitstring_of_header (header : header) =
   [%bitstring
       {| int32_of_magic header.magic                                          :  4*8 : littleendian
        ; Utils.zeropad_string_to_length (string_of_command header.command) 12 : 12*8 : string
-       ; Int32.of_int header.payload_length                                   :  4*8 : littleendian
+       ; Int.to_int32_exn header.payload_length                               :  4*8 : littleendian
        ; header.checksum                                                      :  4*8 : string
        |}
   ]
@@ -23,9 +24,9 @@ let bitstring_of_network_address network_address =
 ;;
 
 let varint_bitstring_of_int64 = function
-  | i when i < 0xfdL       -> [%bitstring {| Int64.to_int i : 1*8 : littleendian |}]
-  | i when i < 0xffffL     -> [%bitstring {| 0xfd : 1*8; Int64.to_int i : 2*8 : littleendian |}]
-  | i when i < 0xffffffffL -> [%bitstring {| 0xfe : 1*8; Int64.to_int32 i : 4*8 : littleendian |}]
+  | i when i < 0xfdL       -> [%bitstring {| Int.of_int64_exn i : 1*8 : littleendian |}]
+  | i when i < 0xffffL     -> [%bitstring {| 0xfd : 1*8; Int64.to_int_exn i : 2*8 : littleendian |}]
+  | i when i < 0xffffffffL -> [%bitstring {| 0xfe : 1*8; Int64.to_int32_exn i : 4*8 : littleendian |}]
   | i                      -> [%bitstring {| 0xff : 1*8; i : 8*8 : littleendian |}]
 ;;
 
@@ -44,7 +45,7 @@ let varstring_bitstring_of_string s =
 let bitstring_of_version_message m =
   let message_bitstring =
     [%bitstring
-        {| Int32.of_int m.protocol_version                 :  4*8 : littleendian
+        {| Int.to_int32_exn m.protocol_version                 :  4*8 : littleendian
          ; int64_of_services_set m.node_services           :  8*8 : littleendian
          ; Int64.of_float (fst (Unix.mktime m.timestamp))  :  8*8 : littleendian
          ; bitstring_of_network_address m.receiver_address : 26*8 : bitstring
@@ -55,22 +56,26 @@ let bitstring_of_version_message m =
     if m.protocol_version < 106 then message_bitstring else
       let network_address =
         bitstring_of_network_address
-          (Option.default { services = ServiceSet.empty; address = String.make 16 '\x00'; port = 0 } m.sender_address)
+          (Option.value ~default:{ services = Service.Set.empty; address = String.make 16 '\x00'; port = 0 } m.sender_address)
       in
+      let random_nonce = Option.value ~default:default_random_nonce m.random_nonce in
+      let user_agent = varstring_bitstring_of_string (Option.value ~default:"" m.user_agent) in
+      let start_height = Int.to_int32_exn (Option.value ~default:0 m.start_height) in
       [%bitstring
-          {| message_bitstring : -1 : bitstring;
-	   network_address : 26*8 : bitstring;
-	   Option.default default_random_nonce m.random_nonce : 8*8 : littleendian;
-	   varstring_bitstring_of_string (Option.default "" m.user_agent) : -1 : bitstring;
-	   Int32.of_int (Option.default 0 m.start_height) : 4*8 : littleendian
+          {| message_bitstring : -1 : bitstring
+	   ; network_address : 26*8 : bitstring
+	   ; random_nonce : 8*8 : littleendian
+	   ; user_agent : -1 : bitstring
+	   ; start_height : 4*8 : littleendian
            |}
       ]
   in
   let message_bitstring =
     if m.protocol_version < 70001 then message_bitstring else
+      let relay = Utils.int_of_bool (Option.value ~default:false m.relay) in
       [%bitstring
-          {| message_bitstring : -1 : bitstring;
-	   Utils.int_of_bool (Option.default false m.relay) : 1*8 : littleendian
+          {| message_bitstring : -1 : bitstring
+	   ; relay : 1*8 : littleendian
            |}
       ]
   in
@@ -81,17 +86,19 @@ let bitstring_of_verack_message () = empty_bitstring;;
 
 (* using a 0 timestamp as default is a bit of a hack, really, bit it should achieve the same result: this address will not be used by the receiving node *)
 let bitstring_of_timestamped_network_address address =
+  let timestamp = Utils.int64_of_unix_tm (Option.value ~default:(Unix.gmtime 0.0) address.address_timestamp) in
   [%bitstring
-      {| Utils.int64_of_unix_tm (Option.default (Unix.gmtime 0.0) address.address_timestamp) : 8*8 : littleendian;
-       bitstring_of_network_address address.network_address : -1 : bitstring
+      {| timestamp : 8*8 : littleendian
+       ; bitstring_of_network_address address.network_address : -1 : bitstring
        |}
   ]
 ;;
 let bitstring_of_addr_message m =
   let address_count_varint_bitstring = varint_bitstring_of_int64 (Int64.of_int (List.length m.addresses)) in
+  let addresses = concat (List.map ~f:bitstring_of_timestamped_network_address m.addresses) in
   [%bitstring
-      {| address_count_varint_bitstring : -1 : bitstring;
-       concat (List.map bitstring_of_timestamped_network_address m.addresses) : -1 : bitstring
+      {| address_count_varint_bitstring : -1 : bitstring
+       ; addresses : -1 : bitstring
        |}
   ]
 ;;
@@ -107,9 +114,10 @@ let bitstring_of_inventory_item item =
 ;;
 let bitstring_of_inventory_list_message m =
   let item_count_varint_bitstring = varint_bitstring_of_int64 (Int64.of_int (List.length m.inventory)) in
+  let items = concat (List.map ~f:bitstring_of_inventory_item m.inventory) in
   [%bitstring
-      {| item_count_varint_bitstring : -1 : bitstring;
-       concat (List.map bitstring_of_inventory_item m.inventory) : -1 : bitstring
+      {| item_count_varint_bitstring : -1 : bitstring
+       ; items : -1 : bitstring
        |}
   ]
 ;;
@@ -120,11 +128,12 @@ let bitstring_of_notfound_message m = bitstring_of_inventory_list_message m;;
 let bitstring_of_block_locator_list_message m =
   let bitstring_of_hash hash = [%bitstring {| hash : 32*8 : string |}] in
   let block_locator_count_varint_bitstring = varint_bitstring_of_int64 (Int64.of_int (List.length m.block_locator_hashes)) in
+  let block_locator_hashes = concat (List.map ~f:bitstring_of_hash m.block_locator_hashes) in
   [%bitstring
-      {| Int32.of_int m.block_protocol_version : 4*8 : littleendian;
-       block_locator_count_varint_bitstring : -1 : bitstring;
-       concat (List.map bitstring_of_hash m.block_locator_hashes) : -1 : bitstring;
-       m.block_locator_hash_stop : 32*8 : string
+      {| Int.to_int32_exn m.block_protocol_version : 4*8 : littleendian
+       ; block_locator_count_varint_bitstring : -1 : bitstring
+       ; block_locator_hashes : -1 : bitstring
+       ; m.block_locator_hash_stop : 32*8 : string
        |}
   ]
 ;;
@@ -150,13 +159,15 @@ let bitstring_of_transaction_output output =
 let bitstring_of_transaction t =
   let input_count_varint_bitstring = varint_bitstring_of_int64 (Int64.of_int (List.length t.transaction_inputs)) in
   let output_count_varint_bitstring = varint_bitstring_of_int64 (Int64.of_int (List.length t.transaction_outputs)) in
+  let inputs = concat (List.map ~f:bitstring_of_transaction_input t.transaction_inputs) in
+  let outputs = concat (List.map ~f:bitstring_of_transaction_output t.transaction_outputs) in
   [%bitstring
-      {| Int32.of_int t.transaction_data_format_version : 4*8 :littleendian;
-       input_count_varint_bitstring : -1 : bitstring;
-       concat (List.map bitstring_of_transaction_input t.transaction_inputs) : -1 : bitstring;
-       output_count_varint_bitstring : -1 : bitstring;
-       concat (List.map bitstring_of_transaction_output t.transaction_outputs) : -1 : bitstring;
-       int32_of_transaction_lock_time t.transaction_lock_time : 4*8 : littleendian
+      {| Int.to_int32_exn t.transaction_data_format_version : 4*8 :littleendian
+       ; input_count_varint_bitstring : -1 : bitstring
+       ; inputs : -1 : bitstring
+       ; output_count_varint_bitstring : -1 : bitstring
+       ; outputs : -1 : bitstring
+       ; int32_of_transaction_lock_time t.transaction_lock_time : 4*8 : littleendian
        |}
   ]
 ;;
@@ -164,7 +175,7 @@ let bitstring_of_transaction_message m = bitstring_of_transaction m;;
 
 let bitstring_of_block_header header =
   [%bitstring
-      {| Int32.of_int header.block_version : 4*8 : littleendian;
+      {| Int.to_int32_exn header.block_version : 4*8 : littleendian;
        header.previous_block_hash : 32*8 : string;
        header.merkle_root : 32*8 : string;
        Utils.int32_of_unix_tm header.block_timestamp : 4*8 : littleendian;
@@ -182,10 +193,11 @@ let bitstring_of_protocol_block_header header =
 ;;
 let bitstring_of_block block =
   let transaction_count_varint_bitstring = varint_bitstring_of_int64 (Int64.of_int (List.length block.block_transactions)) in
+  let transactions = concat (List.map ~f:bitstring_of_transaction block.block_transactions) in
   [%bitstring
-      {| bitstring_of_block_header block.block_header : -1 : bitstring;
-       transaction_count_varint_bitstring : -1 : bitstring;
-       concat (List.map bitstring_of_transaction block.block_transactions) : -1 : bitstring
+      {| bitstring_of_block_header block.block_header : -1 : bitstring
+       ; transaction_count_varint_bitstring : -1 : bitstring
+       ; transactions : -1 : bitstring
        |}
   ]
 ;;
@@ -193,9 +205,10 @@ let bitstring_of_block_message m = bitstring_of_block m;;
 
 let bitstring_of_headers_message m =
   let headers_count_varint_bitstring = varint_bitstring_of_int64 (Int64.of_int (List.length m.block_headers)) in
+  let headers = concat (List.map ~f:bitstring_of_protocol_block_header m.block_headers) in
   [%bitstring
-      {| headers_count_varint_bitstring : -1 : bitstring;
-       concat (List.map bitstring_of_protocol_block_header m.block_headers) : -1 : bitstring
+      {| headers_count_varint_bitstring : -1 : bitstring
+       ; headers : -1 : bitstring
        |}
   ]
 ;;

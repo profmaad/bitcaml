@@ -1,15 +1,16 @@
+open! Core.Std
 open Bitcoin_protocol;;
 
 (* network rule constants *)
 let max_block_size = 1000000;;
 let coinbase_maturity = 100L;;
-let max_money = Int64.mul 21000000L coin_size;;
+let max_money = Int64.( * ) 21000000L coin_size;;
 let max_block_into_future = 2. *. 60. *. 60.;;
 let max_block_sigops = max_block_size / 50;;
 let difficulty_change_interval = 2016;;
 let timestamp_verification_predecessors = 11;;
 let initial_block_creation_fee_btc = 50L;;
-let initial_block_creation_fee = Int64.mul initial_block_creation_fee_btc coin_size;;
+let initial_block_creation_fee = Int64.( * ) initial_block_creation_fee_btc coin_size;;
 let block_fee_reduction_interval = 210000L;;
 
 let legal_money_range i = (i >= 0L) && (i <= max_money);;
@@ -59,7 +60,7 @@ let bigint_of_hash hash =
 
   result
 ;;
-let bigint_of_difficulty_bits bits = 
+let bigint_of_difficulty_bits bits =
   let bigint_base = Big_int.big_int_of_int bits.bits_base in
   let exponent = 8 * (bits.bits_exponent - 3) in
   let bigint_exponent = Big_int.power_int_positive_int 2 exponent in
@@ -77,7 +78,7 @@ let hash_of_transaction tx =
   Bitcoin_crypto.hash256 (Bitstring.string_of_bitstring tx_bitstring)
 ;;
 let merkle_root_of_block block =
-  let transaction_hashes = List.map hash_of_transaction block.block_transactions in
+  let transaction_hashes = List.map ~f:hash_of_transaction block.block_transactions in
   Bitcoin_crypto.merkle_tree_hash Bitcoin_crypto.hash256 transaction_hashes
 ;;
 
@@ -88,7 +89,7 @@ let transaction_input_is_coinbase txin =
 
 let transaction_is_coinbase tx =
   ((List.length tx.transaction_inputs) = 1) &&
-    (transaction_input_is_coinbase (List.hd tx.transaction_inputs))
+    (transaction_input_is_coinbase (List.hd_exn tx.transaction_inputs))
 ;;
 
 let coinbase_script_length_range i = (i >= 2) || (i <= 100);;
@@ -101,12 +102,12 @@ let block_merkle_root_matches block =
 ;;
 
 let block_creation_fee_at_height height =
-  let reduction_intervals = Int64.to_int (Int64.div height block_fee_reduction_interval) in
+  let reduction_intervals = Int64.to_int_exn (Int64.(/) height block_fee_reduction_interval) in
   Int64.shift_right_logical initial_block_creation_fee reduction_intervals
 ;;
 
 let transaction_is_final height time tx =
-  if List.for_all (fun txin -> txin.transaction_sequence_number = 0xffffffffl) tx.transaction_inputs then
+  if List.for_all ~f:(fun txin -> txin.transaction_sequence_number = 0xffffffffl) tx.transaction_inputs then
     true
   else
     match tx.transaction_lock_time with

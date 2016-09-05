@@ -1,3 +1,4 @@
+open! Core.Std
 open Bitstring;;
 open Bitcoin_script;;
 
@@ -31,7 +32,7 @@ let bitstring_of_data_word opcode data_item =
       if length > 0xffffffff then raise Malformed_script
       else
 	[%bitstring
-            {| Int32.of_int length : 4*8 : littleendian
+            {| Int.to_int32_exn length : 4*8 : littleendian
 	     ; bitstring_of_data_item data_item : -1 : bitstring
 	     |}
         ]
@@ -51,5 +52,5 @@ let bitstring_of_word = function
 ;;
 
 let bitstring_of_script script =
-  concat (List.map bitstring_of_word script)
+  concat (List.map ~f:bitstring_of_word script)
 ;;

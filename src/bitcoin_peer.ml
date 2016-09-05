@@ -1,3 +1,4 @@
+open! Core.Std
 open Bitcoin_protocol;;
 
 type peer =
@@ -5,20 +6,20 @@ type peer =
     peer_network : magic;
     local_version : version_message;
     peer_version : version_message;
-    peer_socket : Unix.file_descr;
+    peer_socket : Unix.File_descr.t;
     peer_debug : bool;
     blockchain : Bitcoin_blockchain.t;
   };;
 
 let default_version =
   let default_network_address = {
-    services = ServiceSet.empty;
+    services = Service.Set.empty;
     address = (String.make 10 '\x00') ^ "\xff\xff" ^ "\127\000\000\001"; (* 127.0.0.1 *)
     port = 0;
   } in
   {
     protocol_version = 0;
-    node_services = ServiceSet.empty;
+    node_services = Service.Set.empty;
     timestamp = Unix.localtime (Unix.time ());
     receiver_address = default_network_address;
     sender_address = None;
@@ -32,7 +33,7 @@ let debug_may peer f =
   if peer.peer_debug then (f ())
 ;;
 
-let message_of_payload peer payload = 
+let message_of_payload peer payload =
   {
     network = peer.peer_network;
     payload = payload;
@@ -41,14 +42,14 @@ let message_of_payload peer payload =
 
 let send_bitstring peer bitstring =
   let message_string = Bitstring.string_of_bitstring bitstring in
-  Unix.write peer.peer_socket message_string 0 (String.length message_string)
+  Unix.write peer.peer_socket message_string
 ;;
 let send_message peer message =
   let message_bitstring = Bitcoin_protocol_generator.bitstring_of_message message in
   let bytes_written = send_bitstring peer message_bitstring in
   debug_may peer (fun () -> Printf.printf "Send message (%d bytes):\n" bytes_written;
     Bitcoin_protocol_pp.print_message message;
-    print_newline ();
+    Out_channel.newline stdout;
   )
 ;;
 let send_payload peer payload = send_message peer (message_of_payload peer payload);;
@@ -66,7 +67,7 @@ let receive_message peer =
     Printf.printf "Received %s message\n" (Bitcoin_protocol_pp.pp_string_of_command (command_of_message_payload m.payload))
   in
   let received_message = Bitcoin_protocol_parser.read_and_parse_message_from_fd peer.peer_version.protocol_version peer.peer_socket in
-  debug_may peer (fun () -> Option.may print_received_message_type received_message);
+  debug_may peer (fun () -> Option.iter ~f:print_received_message_type received_message);
   received_message
 ;;
 let rec receive_message_with_command command peer =
@@ -77,7 +78,7 @@ let rec receive_message_with_command command peer =
 ;;
 
 (* TODO: properly handle network time *)
-let network_median_time _ = 
+let network_median_time _ =
   Utils.unix_tm_of_now ()
 ;;
 
@@ -155,19 +156,19 @@ let exchange_addresses peer =
 ;;
 
 let construct_block_locator_list_message peer hash_stop =
-  let rec select_block_hashes step_size height count blockchain_db = 
-    let next_step_size = if count >= 10L then Int64.mul step_size 2L else step_size in
+  let rec select_block_hashes step_size height count blockchain_db =
+    let next_step_size = if count >= 10L then Int64.( * ) step_size 2L else step_size in
     let height = if height <= 0L then 0L else height in
     match Bitcoin_blockchain_db.Block.retrieve_mainchain_block_at_height blockchain_db height with
     | None -> []
     | Some db_block ->
       db_block.Bitcoin_blockchain_db.Block.hash :: if height = 0L then [] else
-	  (select_block_hashes next_step_size (Int64.sub height next_step_size) (Int64.add count 1L) blockchain_db)
+	  (select_block_hashes next_step_size (Int64.(-) height next_step_size) (Int64.(+) count 1L) blockchain_db)
   in
   let mainchain_tip = Bitcoin_blockchain_db.Block.retrieve_mainchain_tip peer.blockchain.Bitcoin_blockchain.db in
-  let mainchain_height = (Option.get mainchain_tip).Bitcoin_blockchain_db.Block.height in
+  let mainchain_height = (Option.value_exn mainchain_tip).Bitcoin_blockchain_db.Block.height in
   (* debug_may peer (fun () -> Printf.printf "[INFO] current mainchain height: %Lu\n" mainchain_height); *)
-  Printf.printf "[INFO] current mainchain height: %Lu\n" mainchain_height; flush stdout;
+  Printf.printf "[INFO] current mainchain height: %Lu\n" mainchain_height; Out_channel.flush stdout;
   let block_locator_hashes = select_block_hashes 1L mainchain_height 0L peer.blockchain.Bitcoin_blockchain.db in
   {
     block_protocol_version = peer.peer_version.protocol_version;
@@ -181,12 +182,12 @@ let initiate_blockchain_download peer =
 ;;
 
 let block_inventory_of_inventory inventory =
-  List.filter (fun item -> item.inventory_item_type = BlockInventoryItem) inventory
+  List.filter ~f:(fun item -> item.inventory_item_type = BlockInventoryItem) inventory
 ;;
-let block_hashes_of_inventory p = 
-  List.map (fun item -> item.inventory_item_hash) (block_inventory_of_inventory p.inventory)
+let block_hashes_of_inventory p =
+  List.map ~f:(fun item -> item.inventory_item_hash) (block_inventory_of_inventory p.inventory)
 ;;
-  
+
 let get_block peer block_hash =
   let payload = GetDataPayload {
     inventory = [
@@ -219,7 +220,7 @@ let own_addr_payload peer =
     addresses = [
       {
 	address_timestamp = Some (Utils.unix_tm_of_now ());
-	network_address = Option.get peer.local_version.sender_address;
+	network_address = Option.value_exn peer.local_version.sender_address;
       }
     ];
   }
@@ -227,7 +228,7 @@ let own_addr_payload peer =
 
 let handle_block peer block =
   let hash = Bitcoin_protocol_generator.block_hash block.block_header in
-  debug_may peer (fun () -> Printf.printf "[INFO] received block %s\n%!" (Utils.hex_string_of_hash_string hash));  
+  debug_may peer (fun () -> Printf.printf "[INFO] received block %s\n%!" (Utils.hex_string_of_hash_string hash));
   (try Bitcoin_blockchain.handle_block peer.blockchain (network_median_time peer) block with
   | Bitcoin_blockchain.BlockIsOrphan ->
     debug_may peer (fun () -> Printf.printf "[INFO] inserted block %s as orphan\n" (Utils.hex_string_of_hash_string hash));

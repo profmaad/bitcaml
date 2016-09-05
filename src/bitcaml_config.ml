@@ -1,7 +1,9 @@
+open! Core.Std
+
 let bitcoin_protocol_version = 70002
 let bitcoin_protocol_magic = Bitcoin_protocol.TestNet3
 
-let user_agent = 
+let user_agent =
   let current_time = Unix.gmtime (Unix.time ()) in
   Printf.sprintf "/bitcaml:%04d%02d%02d/" (current_time.Unix.tm_year + 1900) (current_time.Unix.tm_mon + 1) current_time.Unix.tm_mday
 ;;

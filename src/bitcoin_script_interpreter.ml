@@ -1,3 +1,4 @@
+open! Core.Std
 open Bitcoin_protocol;;
 open Bitcoin_script;;
 
@@ -49,7 +50,7 @@ let int_of_hash_type_flags flags =
   let int_of_hash_type_flag = function
     | SigHashAnyoneCanPay -> 0x80
   in
-  List.fold_left ( lor ) 0x00 (List.map int_of_hash_type_flag flags)
+  List.fold ~init:0x00 ~f:( lor ) (List.map ~f:int_of_hash_type_flag flags)
 ;;
 
 let hash_type_and_flags_of_int i =
@@ -63,13 +64,13 @@ let create_stack () =
   let (stack : stack) = Stack.create () in
   stack
 ;;
-let push (data_item : data_item) (stack : stack) = Stack.push data_item stack;;
+let push (data_item : data_item) (stack : stack) = Stack.push stack data_item;;
 let pop (stack : stack) =
-  let (top_item : data_item) = Stack.pop stack in
+  let (top_item : data_item) = Stack.pop_exn stack in
   top_item
 ;;
 let top (stack : stack) =
-  let (top_item : data_item) = Stack.top stack in
+  let (top_item : data_item) = Stack.top_exn stack in
   top_item
 ;;
 
@@ -81,7 +82,7 @@ let pop_to_list n stack =
   pop_acc [] n stack
 ;;
 let push_list items stack =
-  List.iter (fun item -> push item stack) items
+  List.iter ~f:(fun item -> push item stack) items
 ;;
 
 let pop_n n (stack : stack) =
@@ -100,7 +101,7 @@ let top_n n (stack : stack) =
 let roll_n n stack =
   let item = pop_n n stack in
   push item stack
-;;  
+;;
 let dup_n n stack =
   let items = pop_to_list n stack in
   push_list items stack;
@@ -121,8 +122,8 @@ let op_over stack =
 let op_pick stack =
   match int64_of_data_item (pop stack) with
   | None -> raise Result_invalid
-  | Some n -> 
-    let n = Int64.to_int n in
+  | Some n ->
+    let n = Int64.to_int_exn n in
     let item = top_n n stack in
     push item stack
 ;;
@@ -130,7 +131,7 @@ let op_roll stack =
   match int64_of_data_item (pop stack) with
   | None -> raise Result_invalid
   | Some n ->
-    let n = Int64.to_int n in
+    let n = Int64.to_int_exn n in
     roll_n n stack
 ;;
 let op_tuck stack =
@@ -184,9 +185,9 @@ let arithmetic_int64_of_data_item item =
     | None -> raise Illegal_arithmetic
     | Some i -> i
 ;;
-let push_int64 i (stack : stack) = Stack.push (data_item_of_int64 i) stack;;
+let push_int64 i (stack : stack) = Stack.push stack (data_item_of_int64 i);;
 let pop_int64 (stack : stack) =
-  let (top_item : data_item) = Stack.pop stack in
+  let (top_item : data_item) = Stack.pop_exn stack in
   arithmetic_int64_of_data_item top_item
 ;;
 
@@ -211,17 +212,17 @@ let minmax f stack =
   let b = pop_int64 stack in
   let a = pop_int64 stack in
   push_int64 (if (f a b) then a else b) stack
-  
+
 let op_min stack = minmax ( < ) stack;;
 let op_max stack = minmax ( > ) stack;;
-let op_within stack = 
+let op_within stack =
   let max = pop_int64 stack in
   let min = pop_int64 stack in
   let x = pop_int64 stack in
   push_bool_arithmetic (min <= x && x < max) stack
 ;;
 
-let binary_arithmetic_op_int64_result f stack =  
+let binary_arithmetic_op_int64_result f stack =
   let op2 = pop_int64 stack in
   let op1 = pop_int64 stack in
   let result = f op1 op2 in
@@ -240,8 +241,8 @@ let binary_boolean_op_boolean_result f stack =
   push_bool_arithmetic result stack
 ;;
 
-let op_add stack = binary_arithmetic_op_int64_result Int64.add stack;;
-let op_sub stack = binary_arithmetic_op_int64_result Int64.sub stack;;
+let op_add stack = binary_arithmetic_op_int64_result Int64.(+) stack;;
+let op_sub stack = binary_arithmetic_op_int64_result Int64.(-) stack;;
 
 let hash f stack =
   push (f (pop stack)) stack
@@ -254,7 +255,7 @@ let checksig_copy_tx tx input_index subscript =
     else
       { txin with signature_script = "" }
   in
-  let modified_inputs = List.mapi set_scripts tx.transaction_inputs in
+  let modified_inputs = List.mapi ~f:set_scripts tx.transaction_inputs in
   { tx with transaction_inputs = modified_inputs }
 ;;
 let zero_input_sequence_numbers inputs input_index =
@@ -263,7 +264,7 @@ let zero_input_sequence_numbers inputs input_index =
     else
       { txin with transaction_sequence_number = 0x0000l }
   in
-  List.mapi set_sequence_numbers inputs
+  List.mapi ~f:set_sequence_numbers inputs
 ;;
 let checksig_copy_tx_sighashnone tx input_index =
   let modified_inputs = zero_input_sequence_numbers tx.transaction_inputs input_index in
@@ -282,7 +283,7 @@ let checksig_copy_tx_sighashsingle tx input_index =
       }
   in
   let remaining_outputs, _ = Utils.split_list tx.transaction_outputs (input_index + 1) in
-  let modified_outputs = List.mapi modify_outputs remaining_outputs in
+  let modified_outputs = List.mapi ~f:modify_outputs remaining_outputs in
   let modified_inputs = zero_input_sequence_numbers tx.transaction_inputs input_index in
   { tx with
     transaction_inputs = modified_inputs;
@@ -290,7 +291,7 @@ let checksig_copy_tx_sighashsingle tx input_index =
   }
 ;;
 let checksig_copy_tx_sighashanyonecanpay tx input_index =
-  let input = List.nth tx.transaction_inputs input_index in
+  let input = List.nth_exn tx.transaction_inputs input_index in
   { tx with
     transaction_inputs = [input];
   }
@@ -314,7 +315,7 @@ let checksig_hash_transaction tx input_index subscript hash_type_byte hash_type 
     | SigHashSingle -> checksig_copy_tx_sighashsingle txcopy input_index
     | UnknownHashType _ -> raise Result_invalid
   in
-  let txcopy = if List.mem SigHashAnyoneCanPay flags then
+  let txcopy = if List.mem flags SigHashAnyoneCanPay then
       checksig_copy_tx_sighashanyonecanpay txcopy input_index
     else
       txcopy
@@ -322,7 +323,7 @@ let checksig_hash_transaction tx input_index subscript hash_type_byte hash_type 
 
   let tx_bitstring = Bitcoin_protocol_generator.bitstring_of_transaction txcopy in
   (* quick-n-dirty one byte to 4 byte little endian... *)
-  let hash_type_string = (String.make 1 (Char.chr hash_type_byte)) ^ (String.make 3 '\x00') in
+  let hash_type_string = (String.make 1 (Char.of_int_exn hash_type_byte)) ^ (String.make 3 '\x00') in
   let tx_string = Bitstring.string_of_bitstring tx_bitstring ^ hash_type_string in
 
   Bitcoin_crypto.hash256 tx_string
@@ -352,7 +353,7 @@ let op_checksig stack tx_data script_after_codesep =
   let public_key = pop stack in
   let complete_signature = pop stack in
 
-  let subscript = List.filter (subscript_filter complete_signature) script_after_codesep in
+  let subscript = List.filter ~f:(subscript_filter complete_signature) script_after_codesep in
 
   let result = check_signature public_key complete_signature tx_data subscript in
 
@@ -362,7 +363,7 @@ let op_checksig stack tx_data script_after_codesep =
 let op_checkmultisig stack tx_data script_after_codesep =
   let subscript_filter signatures = function
     | CodeSeparator -> false
-    | Data (_, s) when List.mem s signatures -> false
+    | Data (_, s) when List.mem signatures s -> false
     | _ -> true
   in
 
@@ -380,14 +381,14 @@ let op_checkmultisig stack tx_data script_after_codesep =
   match pop_int64 stack with
   | i when (i > 20L) || (i < 0L) -> push (data_item_of_bool false) stack
   | public_key_count ->
-    let public_keys = pop_to_list (Int64.to_int public_key_count) stack in
+    let public_keys = pop_to_list (Int64.to_int_exn public_key_count) stack in
     match pop_int64 stack with
     | i when (i < 0L) || (i > public_key_count) -> push (data_item_of_bool false) stack
     | signature_count ->
-      let signatures = pop_to_list (Int64.to_int signature_count) stack in
+      let signatures = pop_to_list (Int64.to_int_exn signature_count) stack in
       ignore(pop stack);
 
-      let subscript = List.filter (subscript_filter signatures) script_after_codesep in
+      let subscript = List.filter ~f:(subscript_filter signatures) script_after_codesep in
       let result = check_signatures_against_public_keys signatures public_keys tx_data subscript in
       push (data_item_of_bool result) stack
 ;;
@@ -435,8 +436,8 @@ let execute_word stack altstack tx_data script_data = function
   | Equal -> op_equal stack
   | EqualVerify -> op_equal stack; op_verify stack
 (* Arithmetic *)
-  | OneAdd -> push_int64 (Int64.add (pop_int64 stack) 1L) stack
-  | OneSub -> push_int64 (Int64.sub (pop_int64 stack) 1L) stack
+  | OneAdd -> push_int64 (Int64.(+) (pop_int64 stack) 1L) stack
+  | OneSub -> push_int64 (Int64.(-) (pop_int64 stack) 1L) stack
   | TwoMul -> raise Disabled_opcode
   | TwoDiv -> raise Disabled_opcode
   | Negate -> push_int64 (Int64.neg (pop_int64 stack)) stack
@@ -492,7 +493,7 @@ let dump_stack stack =
     Printf.printf "\t%d:\t%s\n" !index (Bitcoin_script_pp.pp_string_of_data_item item);
     index := !index + 1
   in
-  Stack.iter print_data_item_with_index stack
+  Stack.iter ~f:print_data_item_with_index stack
 ;;
 let dump_ifstack ifstack not_taken_if_level =
   let index = ref 0 in
@@ -501,11 +502,11 @@ let dump_ifstack ifstack not_taken_if_level =
     index := !index + 1
   in
   Printf.printf "[SCRIPT] NOT_TAKEN_IF_LEVEL: %d\n" not_taken_if_level;
-  Stack.iter print_bool_with_index ifstack
+  Stack.iter ~f:print_bool_with_index ifstack
 ;;
 
 let execute_script script tx_data =
-  let branch_is_executing ifstack not_taken_if_level = (not_taken_if_level = 0) && ((Stack.is_empty ifstack) || (Stack.top ifstack)) in
+  let branch_is_executing ifstack not_taken_if_level = (not_taken_if_level = 0) && ((Stack.is_empty ifstack) || (Stack.top_exn ifstack)) in
   let rec execute_script_ ifstack not_taken_if_level stack altstack tx_data script_after_codesep = function
     | [] -> (stack, altstack)
     | CodeSeparator :: ws ->
@@ -514,7 +515,7 @@ let execute_script script tx_data =
     | If :: ws ->
       if branch_is_executing ifstack not_taken_if_level then (
 	let value = bool_of_data_item (pop stack) in
-	Stack.push value ifstack;
+	Stack.push ifstack value;
 	(* Printf.printf "[SCRIPT] executing word: If (value: %b)\n" value; dump_ifstack ifstack not_taken_if_level; *)
 	execute_script_ ifstack not_taken_if_level stack altstack tx_data script_after_codesep ws
       ) else
@@ -523,22 +524,22 @@ let execute_script script tx_data =
     | NotIf :: ws ->
       if branch_is_executing ifstack not_taken_if_level then (
 	let value = bool_of_data_item (pop stack) in
-	Stack.push (not value) ifstack;
+	Stack.push ifstack (not value);
 	(* Printf.printf "[SCRIPT] executing word: NotIf (value: %b)\n" value; dump_ifstack ifstack not_taken_if_level; *)
 	execute_script_ ifstack not_taken_if_level stack altstack tx_data script_after_codesep ws
-      ) else 
+      ) else
 	execute_script_ ifstack (not_taken_if_level + 1) stack altstack tx_data script_after_codesep ws
 
     | Else :: ws ->
       if not_taken_if_level = 0 then (
-	Stack.push (not (Stack.pop ifstack)) ifstack;
+	Stack.push ifstack (not (Stack.pop_exn ifstack));
 	(* Printf.printf "[SCRIPT] executing word: Else\n"; dump_ifstack ifstack not_taken_if_level *)
       );
       execute_script_ ifstack not_taken_if_level stack altstack tx_data script_after_codesep ws
 
     | EndIf :: ws ->
       if branch_is_executing ifstack not_taken_if_level then (
-	ignore (Stack.pop ifstack);
+	ignore (Stack.pop_exn ifstack);
 	(* Printf.printf "[SCRIPT] executing word: EndIf\n"; dump_ifstack ifstack not_taken_if_level; *)
 	execute_script_ ifstack not_taken_if_level stack altstack tx_data script_after_codesep ws
       ) else
@@ -558,7 +559,6 @@ let execute_script script tx_data =
     Result (pop stack)
   with
   | Disabled_opcode -> Invalid
-  | Result_invalid -> Invalid
-  | Stack.Empty -> Invalid
+  | Result_invalid  -> Invalid
+  | _               -> Invalid
 ;;
-    

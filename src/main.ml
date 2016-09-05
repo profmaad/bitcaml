@@ -1,7 +1,8 @@
-open Bitcoin.Protocol;;
+open! Core.Std
+open Bitcoin.Protocol
 
 let local_version () =
-  let services_set = Bitcoin.Protocol.ServiceSet.add Bitcoin.Protocol.NetworkNodeService Bitcoin.Protocol.ServiceSet.empty in
+  let services_set = Service.Set.singleton Bitcoin.Protocol.Service.NetworkNodeService in
   let localhost_address_string = (String.make 10 '\x00') ^ "\xff\xff" ^ "\127\000\000\001" in
   let receiver_address = {
     Bitcoin.Protocol.services = services_set;
@@ -9,7 +10,7 @@ let local_version () =
     port = Bitcaml_config.peer_port;
   } in
   let sender_address = receiver_address in
-  let random_nonce = Random.int64 Int64.max_int in
+  let random_nonce = Random.int64 Int64.max_value in
   {
     Bitcoin.Protocol.protocol_version = Bitcaml_config.bitcoin_protocol_version;
     node_services = services_set;
@@ -25,7 +26,7 @@ let local_version () =
 
 let connect_to_peer ip_address port =
   let socket = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
-  let peer_addr = Unix.ADDR_INET(Unix.inet_addr_of_string ip_address, port) in
+  let peer_addr = Unix.ADDR_INET(Unix.Inet_addr.of_string ip_address, port) in
   Unix.connect socket peer_addr;
   socket
 ;;
@@ -55,7 +56,7 @@ let () =
     Bitcoin.Blockchain.DB.log_difficulty_of_difficulty_bits { Bitcoin.Protocol.bits_base = 0x00ffff; bits_exponent = 0x1d; };
     Bitcoin.Blockchain.DB.log_difficulty_of_difficulty_bits { Bitcoin.Protocol.bits_base = 0x0404cb; bits_exponent = 0x1b; };
   ] in
-  print_endline (String.concat ", " (List.map (Printf.sprintf "%f") difficulty_test_results));
+  print_endline (String.concat ~sep:", " (List.map ~f:(Printf.sprintf "%f") difficulty_test_results));
 
   print_endline "Testing script parser and pretty printer...";
   let test_script = "\x76\xa9\x14\x2f\xef\x8e\xdc\xc4\x50\x19\xac\xba\x3b\xb1\x46\xb7\x6c\xbd\x2f\x84\x8b\xe5\xd6\x88\xac" in
@@ -74,13 +75,13 @@ let () =
 
   print_endline "Testing script engine...";
   let block_new, _ = Bitcoin.Protocol.Parser.parse_block (Bitstring.bitstring_of_file "/tmp/block_new.dat") in
-  let block_new = Option.get block_new in
-  let tx_new = List.nth block_new.Bitcoin.Protocol.block_transactions 1 in
-  Bitcoin.Protocol.PP.print_transaction tx_new; print_newline ();
+  let block_new = Option.value_exn block_new in
+  let tx_new = List.nth_exn block_new.Bitcoin.Protocol.block_transactions 1 in
+  Bitcoin.Protocol.PP.print_transaction tx_new; Out_channel.newline stdout;
   let block_old, _ = Bitcoin.Protocol.Parser.parse_block (Bitstring.bitstring_of_file "/tmp/block_old.dat") in
-  let block_old = Option.get block_old in
-  let tx_old = List.nth block_old.Bitcoin.Protocol.block_transactions 4 in
-  Bitcoin.Protocol.PP.print_transaction tx_old; print_newline ();
+  let block_old = Option.value_exn block_old in
+  let tx_old = List.nth_exn block_old.Bitcoin.Protocol.block_transactions 4 in
+  Bitcoin.Protocol.PP.print_transaction tx_old; Out_channel.newline stdout;
 
   (* let tx_new = { *)
   (*   transaction_data_format_version = 1; *)
@@ -107,10 +108,10 @@ let () =
   (*   transaction_lock_time = AlwaysLockedTransaction; *)
   (* } in *)
 
-  let pubkey_script = (List.hd tx_new.Bitcoin.Protocol.transaction_inputs).Bitcoin.Protocol.signature_script in
+  let pubkey_script = (List.hd_exn tx_new.Bitcoin.Protocol.transaction_inputs).Bitcoin.Protocol.signature_script in
   let pubkey_script_asm = Bitcoin.Script.Parser.parse_script (Bitstring.bitstring_of_string pubkey_script) in
 
-  let output_script = (List.nth tx_old.Bitcoin.Protocol.transaction_outputs 1).Bitcoin.Protocol.output_script in
+  let output_script = (List.nth_exn tx_old.Bitcoin.Protocol.transaction_outputs 1).Bitcoin.Protocol.output_script in
   (* let output_script = Utils.hex_decode "410411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3ac" in *)
   let output_script_asm = Bitcoin.Script.Parser.parse_script (Bitstring.bitstring_of_string output_script) in
 
@@ -143,7 +144,7 @@ let () =
 
   print_string "Sanity testing weird script int encoding...\t";
   let test_value = "\xff\xff\xff\x82" in
-  let decoded_test_value = Option.get (Bitcoin.Script.int64_of_data_item test_value) in
+  let decoded_test_value = Option.value_exn (Bitcoin.Script.int64_of_data_item test_value) in
   let encoded_test_value = Bitcoin.Script.data_item_of_int64 decoded_test_value in
   ( if (compare test_value encoded_test_value) <> 0 then
     Printf.printf "FAILED: %s -> %Ld -> %s\n" (Utils.hex_encode test_value) decoded_test_value (Utils.hex_encode encoded_test_value)
