@@ -1,3 +1,4 @@
+open! Core.Std
 exception Malformed_script;;
 
 type data_item = string;;
@@ -296,11 +297,11 @@ let data_item_compare = String.compare;;
 let data_items_equal d1 d2 = (data_item_compare d1 d2 = 0);;
 let data_item_byte byte item =
   let index = if byte < 0 then (data_item_length item) + byte else byte in
-  Char.code item.[index]
+  Char.to_int item.[index]
 ;;
 let data_item_set_byte byte value item =
   let index = if byte < 0 then (data_item_length item) + byte else byte in
-  Bytes.set item index (Char.chr value)
+  String.set item index (Char.of_int_exn value)
 ;;
 
 let int64_of_data_item item =
@@ -309,7 +310,7 @@ let int64_of_data_item item =
     else
       let this_byte = if byte = ((data_item_length s) - 1) then (data_item_byte byte s) land (lnot 0x80) else (data_item_byte byte s) in
       let shifted_byte = Int64.shift_left (Int64.of_int this_byte) (byte * 8) in
-      let new_acc = Int64.logor shifted_byte acc in
+      let new_acc = Int64.bit_or shifted_byte acc in
       process_byte new_acc (byte + 1) s
   in
   match data_item_length item with
@@ -320,7 +321,7 @@ let int64_of_data_item item =
     let raw_value = process_byte 0x00L 0 item in
     (* MSB >= 0x80 means negative sign *)
     if negative then (
-      (* let magnitude = Int64.logand (Int64.shift_left 0x80L (8 * ((data_item_length item) -1 ))) raw_value in *)
+      (* let magnitude = Int64.bit_and (Int64.shift_left 0x80L (8 * ((data_item_length item) -1 ))) raw_value in *)
       Some (Int64.neg raw_value)
     )
     else
@@ -329,9 +330,9 @@ let int64_of_data_item item =
 let data_item_of_int64 i =
   let rec bytes_of_int64 i =
     if i > 0L then
-      let byte = Int64.to_int (Int64.logand 0xffL i) in
+      let byte = Int64.to_int_exn (Int64.bit_and 0xffL i) in
       let shifted_i = Int64.shift_right_logical i 8 in
-      let byte_string = String.make 1 (Char.chr byte) in
+      let byte_string = String.make 1 (Char.of_int_exn byte) in
       byte_string ^ (bytes_of_int64 shifted_i)
     else ""
   in
@@ -358,11 +359,11 @@ let data_item_of_int64 i =
 let bool_of_data_item item =
   let char_is_zero c = (c = '\x00') in
   let zero_bytes = Utils.map_string char_is_zero item in
-  let all_zero = List.fold_left ( && ) true zero_bytes in
+  let all_zero = List.fold ~init:true ~f:( && ) zero_bytes in
   if all_zero then false
   else (
     let zero_bytes_rev = List.rev zero_bytes in
-    if (List.fold_left ( && ) true (List.tl zero_bytes_rev)) && ((data_item_byte (-1) item) = 0x80) then
+    if (List.fold ~init:true ~f:( && ) (List.tl_exn zero_bytes_rev)) && ((data_item_byte (-1) item) = 0x80) then
       false
     else
       true

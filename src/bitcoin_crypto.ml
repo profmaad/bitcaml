@@ -1,3 +1,4 @@
+open! Core.Std
 open Cryptokit;;
 
 let ripemd160 data =
@@ -34,7 +35,7 @@ let rec merkle_tree_hash hash_f hashes =
     | hash1 :: hash2 :: hashes ->
       create_row (hash_f (hash1 ^ hash2) :: acc) hashes
   in
-  if (List.length hashes) = 1 then List.hd hashes
+  if (List.length hashes) = 1 then List.hd_exn hashes
   else
     let row = create_row [] hashes in
     let row = List.rev row in

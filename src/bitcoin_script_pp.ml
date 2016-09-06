@@ -1,3 +1,4 @@
+open! Core.Std
 open Bitcoin_script;;
 
 let pp_string_of_data_item item =
@@ -107,5 +108,5 @@ let print_script script =
     Printf.printf "\t%u:\t%s\n" (index + 1) (pp_string_of_word word)
   in
   Printf.printf "Bitcoin Transaction Script (%u words):\n" (List.length script);
-  List.iteri print_word_with_index script
+  List.iteri ~f:print_word_with_index script
 ;;

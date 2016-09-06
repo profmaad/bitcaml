@@ -1,8 +1,10 @@
+open! Core.Std
+
 (* Magic value describing the network to use *)
 let coin_size = 100000000L;;
 let satoshis_per_bitoin = 100000000.0;;
 
-type magic = 
+type magic =
 | UnknownMagic of int32
 | MainNetwork
 | TestNet
@@ -35,25 +37,27 @@ type command =
 ;;
 
 (* Services defined for the services field *)
-type service = 
-| NetworkNodeService
-;;
+module Service = struct
+  module T = struct
+    type t =
+      | NetworkNodeService
+    [@@deriving compare, sexp]
+    ;;
+  end
+  include T
 
-(* Set representation of the services bitfield *)
-module ServiceSet = Set.Make(struct
-  type t = service
-  let compare = Pervasives.compare
-end);;
+  include Comparable.Make(T)
+end
 
-type network_address = 
+type network_address =
   {
-    services : ServiceSet.t;
+    services : Service.Set.t;
     address : string;
     port : int;
   };;
 
-type header = 
-  { 
+type header =
+  {
     magic : magic;
     command : command;
     payload_length : int;
@@ -63,7 +67,7 @@ type header =
 type version_message =
   {
     protocol_version : int;
-    node_services : ServiceSet.t;
+    node_services : Service.Set.t;
     timestamp : Unix.tm;
     receiver_address : network_address;
     sender_address : network_address option;
@@ -168,7 +172,7 @@ type headers_message =
     block_headers : protocol_block_header list;
   };;
 
-type nonce_message = 
+type nonce_message =
   {
     message_nonce : int64;
   };;
@@ -192,7 +196,7 @@ type reject_message =
     rejection_reason : string;
   };;
 
-type message_payload = 
+type message_payload =
 | VersionPayload of version_message
 | VerAckPayload
 | AddrPayload of addr_message
@@ -301,27 +305,29 @@ let command_of_message_payload = function
   | UnknownPayload p -> UnknownCommand "UNKNOWN"
 ;;
 
-let services_set_of_int64 i = 
+let services_set_of_int64 i =
   let services_list = ref [] in
-  if (Int64.logand i 0x0000000000000001L) > 0L then services_list := NetworkNodeService :: !services_list;
-  List.fold_right ServiceSet.add !services_list ServiceSet.empty
+  if (Int64.bit_and i 0x0000000000000001L) > 0L then services_list := Service.NetworkNodeService :: !services_list;
+  List.fold ~init:Service.Set.empty ~f:Set.add !services_list
 ;;
 let int64_of_services_set set =
   let int64_of_service = function
-    | NetworkNodeService -> 0x0000000000000001L
+    | Service.NetworkNodeService -> 0x0000000000000001L
   in
-  List.fold_left Int64.logor Int64.zero (List.map int64_of_service (ServiceSet.elements set))
+  Set.to_list set
+  |> List.map ~f:int64_of_service
+  |> List.fold ~init:Int64.zero ~f:Int64.bit_or
 ;;
 
 let inventory_item_type_of_int32 = function
   | 0x1l -> TransactionInventoryItem
   | 0x2l -> BlockInventoryItem
-  | i -> UnknownInventoryItem (Int32.to_int i)
+  | i    -> UnknownInventoryItem (Int.of_int32_exn i)
 ;;
 let int32_of_inventory_item_type = function
   | TransactionInventoryItem -> 0x1l
-  | BlockInventoryItem -> 0x2l
-  | UnknownInventoryItem i -> (Int32.of_int i)
+  | BlockInventoryItem       -> 0x2l
+  | UnknownInventoryItem i   -> (Int32.of_int_exn i)
 ;;
 
 let transaction_lock_time_of_int32 = function
@@ -359,14 +365,14 @@ let int_of_rejection_reason = function
 ;;
 
 let difficulty_bits_of_int32 i =
-  let exponent = Int32.shift_right_logical (Int32.logand i 0xff000000l) 24 in
-  let base = Int32.logand i 0x00ffffffl in
+  let exponent = Int32.shift_right_logical (Int32.bit_and i 0xff000000l) 24 in
+  let base = Int32.bit_and i 0x00ffffffl in
   {
-    bits_base = Int32.to_int base;
-    bits_exponent = Int32.to_int exponent;
+    bits_base = Int32.to_int_exn base;
+    bits_exponent = Int32.to_int_exn exponent;
   }
 ;;
 let int32_of_difficulty_bits bits =
-  let exponent = Int32.shift_left (Int32.of_int bits.bits_exponent) 24 in
-  Int32.logor exponent (Int32.of_int bits.bits_base)
+  let exponent = Int32.shift_left (Int32.of_int_exn bits.bits_exponent) 24 in
+  Int32.bit_or exponent (Int32.of_int_exn bits.bits_base)
 ;;

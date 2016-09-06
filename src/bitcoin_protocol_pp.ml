@@ -1,3 +1,4 @@
+open! Core.Std
 open Bitcoin_protocol;;
 
 let pp_string_of_magic = function
@@ -34,43 +35,43 @@ let pp_string_of_command = function
 
 let pp_string_of_services_set set =
   let pp_string_of_service = function
-    | NetworkNodeService -> "Full Network Node"
+    | Service.NetworkNodeService -> "Full Network Node"
   in
-  if ServiceSet.is_empty set then "No Services"
-  else String.concat ", " (List.map pp_string_of_service (ServiceSet.elements set))
+  if Set.is_empty set then "No Services"
+  else String.concat ~sep:", " (List.map ~f:pp_string_of_service (Set.to_list set))
 ;;
 
 let pp_string_of_ipv4_address address_string =
   Printf.sprintf "%d.%d.%d.%d"
-    (Char.code (address_string.[String.length address_string - 4]))
-    (Char.code (address_string.[String.length address_string - 3]))
-    (Char.code (address_string.[String.length address_string - 2]))
-    (Char.code (address_string.[String.length address_string - 1]))
+    (Char.to_int (address_string.[String.length address_string - 4]))
+    (Char.to_int (address_string.[String.length address_string - 3]))
+    (Char.to_int (address_string.[String.length address_string - 2]))
+    (Char.to_int (address_string.[String.length address_string - 1]))
 ;;
 
 let pp_string_of_network_address n =
   Printf.sprintf "%s:%d (%s)" (pp_string_of_ipv4_address n.address) n.port (pp_string_of_services_set n.services)
 ;;
 
-let print_header header = 
+let print_header header =
   print_endline "Bitcoin Message Header:";
   Printf.printf "\tMagic: %s\n" (pp_string_of_magic header.magic);
   Printf.printf "\tCommand: %s\n" (pp_string_of_command header.command);
   Printf.printf "\tPayload Size: %d bytes\n" header.payload_length;
-  print_string "\tChecksum: "; Utils.print_hex_string header.checksum 0; print_newline ();
+  print_string "\tChecksum: "; Utils.print_hex_string header.checksum 0; Out_channel.newline stdout;
 ;;
 
-let print_version_message m = 
+let print_version_message m =
   print_endline "Bitcoin Version Message:";
   Printf.printf "\tProtocol Version: %d\n" m.protocol_version;
   Printf.printf "\tServices: %s\n" (pp_string_of_services_set m.node_services);
   Printf.printf "\tTimestamp: %s\n" (Utils.string_of_unix_tm m.timestamp);
   Printf.printf "\tReceiver: %s\n" (pp_string_of_network_address m.receiver_address);
-  Option.may (fun sender_address -> Printf.printf "\tSender: %s\n" (pp_string_of_network_address sender_address)) m.sender_address;
-  Option.may (fun random_nonce -> Printf.printf "\tRandom Nonce: 0x%08Lx\n" random_nonce) m.random_nonce;
-  Option.may (fun user_agent -> Printf.printf "\tUser Agent: %s\n" user_agent) m.user_agent;
-  Option.may (fun start_height -> Printf.printf "\tStarting block height: %d\n" start_height) m.start_height;
-  Option.may (fun relay -> Printf.printf "\tRelay transactions?: %s\n" (if relay then "Yes" else "No")) m.relay
+  Option.iter ~f:(fun sender_address -> Printf.printf "\tSender: %s\n" (pp_string_of_network_address sender_address)) m.sender_address;
+  Option.iter ~f:(fun random_nonce -> Printf.printf "\tRandom Nonce: 0x%08Lx\n" random_nonce) m.random_nonce;
+  Option.iter ~f:(fun user_agent -> Printf.printf "\tUser Agent: %s\n" user_agent) m.user_agent;
+  Option.iter ~f:(fun start_height -> Printf.printf "\tStarting block height: %d\n" start_height) m.start_height;
+  Option.iter ~f:(fun relay -> Printf.printf "\tRelay transactions?: %s\n" (if relay then "Yes" else "No")) m.relay
 ;;
 
 let print_verack_message () =
@@ -82,7 +83,7 @@ let print_addr_message m =
     | [] -> ()
     | address :: addresses ->
       Printf.printf "\t%d:\t%s\n" index (pp_string_of_network_address address.network_address);
-      Option.may (fun timestamp -> Printf.printf "\t\t(Last seen: %s)\n" (Utils.string_of_unix_tm timestamp)) address.address_timestamp;
+      Option.iter ~f:(fun timestamp -> Printf.printf "\t\t(Last seen: %s)\n" (Utils.string_of_unix_tm timestamp)) address.address_timestamp;
       print_addresses (index+1) addresses
   in
   Printf.printf "Bitcoin Address Message (%d addresses):\n" (List.length m.addresses);
@@ -156,7 +157,7 @@ let print_transaction transaction =
       Printf.printf "\t%d:\tReferenced output: %s\n" index (pp_string_of_transaction_outpoint input.previous_transaction_output);
       Printf.printf "\t\tSequence Number: %s\n" (if input.transaction_sequence_number = 0xffffffffl then "Final" else Printf.sprintf "0x%lx" input.transaction_sequence_number);
       Printf.printf "\t\tSignature script:\n"; Utils.print_indented_hex_string input.signature_script 0 2;
-      print_newline ();
+      Out_channel.newline stdout;
       print_transaction_inputs (index + 1) inputs
   in
   let rec print_transaction_outputs index = function
@@ -164,7 +165,7 @@ let print_transaction transaction =
     | output :: outputs ->
       Printf.printf "\t%d:\tValue: %s\n" index (pp_string_of_output_value output.transaction_output_value);
       Printf.printf "\t\tOutput script:\n"; Utils.print_indented_hex_string output.output_script 0 2;
-      print_newline ();
+      Out_channel.newline stdout;
       print_transaction_outputs (index + 1) outputs
   in
   Printf.printf "\tData Format Version: %d\n" transaction.transaction_data_format_version;
@@ -203,7 +204,7 @@ let print_block block =
   in
   print_block_header block.block_header;
   Printf.printf "\tTransactions (%d entries):\n" (List.length block.block_transactions);
-  List.iteri print_transaction_with_index block.block_transactions
+  List.iteri ~f:print_transaction_with_index block.block_transactions
 ;;
 let print_block_message m =
   print_endline "Bitcoin Block Message:";
@@ -217,7 +218,7 @@ let print_headers_message m =
   in
   print_endline "Bitcoin Headers Message:";
   Printf.printf "\tHeaders (%d entries):\n" (List.length m.block_headers);
-  List.iteri print_protocol_block_header_with_index m.block_headers
+  List.iteri ~f:print_protocol_block_header_with_index m.block_headers
 ;;
 
 let print_mempool_message () =

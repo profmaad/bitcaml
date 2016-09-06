@@ -1,3 +1,5 @@
+open! Core.Std
+
 let map_string f s =
   let rec map_string_ f s position length =
     if position >= length then []
@@ -17,10 +19,11 @@ let reverse_string s =
 
 let print_hex_string s line_length =
   let hex_iterator index c =
-    if (index > 0) && (line_length > 0) && ((index mod line_length) = 0) then print_newline ();
+    if (index > 0) && (line_length > 0) && ((index mod line_length) = 0) then Out_channel.newline stdout;
     Printf.printf "%02x " (int_of_char c);
   in
-  String.iteri hex_iterator s
+  String.to_list s
+  |> List.iteri ~f:hex_iterator
 ;;
 let print_indented_hex_string s line_length indent_level =
   let hex_iterator index c =
@@ -28,20 +31,21 @@ let print_indented_hex_string s line_length indent_level =
     Printf.printf "%02x " (int_of_char c);
   in
   print_string (String.make indent_level '\t');
-  String.iteri hex_iterator s
+  String.to_list s
+  |> List.iteri ~f:hex_iterator
 ;;
 
 let hex_string_of_string s =
   let hex_mapper c = Printf.sprintf "%02x " (int_of_char c) in
-  String.concat "" (map_string hex_mapper s)
+  String.concat ~sep:"" (map_string hex_mapper s)
 ;;
 let hex_string_of_hash_string s =
   let hex_mapper c = Printf.sprintf "%02x" (int_of_char c) in
-  String.concat "" (map_string hex_mapper (reverse_string s))
+  String.concat ~sep:"" (map_string hex_mapper (reverse_string s))
 ;;
 let hex_string_of_hash_string_noreverse s =
   let hex_mapper c = Printf.sprintf "%02x" (int_of_char c) in
-  String.concat "" (map_string hex_mapper s)
+  String.concat ~sep:"" (map_string hex_mapper s)
 ;;
 let zero_hash = String.make 32 '\x00';;
 
@@ -69,9 +73,9 @@ let bytestring_of_int64 i bytesize =
   let rec bytestring_of_int_ i acc byte_index =
     let shift_distance = 8 * byte_index in
     let mask = Int64.shift_left 0xffL shift_distance in
-    let masked_int = Int64.logand i mask in
+    let masked_int = Int64.bit_and i mask in
     let shifted_int = Int64.shift_right_logical masked_int shift_distance in
-    let byte_char = Char.chr (Int64.to_int shifted_int) in
+    let byte_char = Char.of_int_exn (Int64.to_int_exn shifted_int) in
     let new_acc = acc ^ (String.make 1 byte_char) in
     match byte_index with
     | 0 -> new_acc
@@ -90,11 +94,11 @@ let unix_tm_of_int32 timestamp =
 let unix_tm_of_int64 timestamp =
   Unix.localtime (Int64.to_float timestamp)
 ;;
-let int32_of_unix_tm unix_tm = 
+let int32_of_unix_tm unix_tm =
   let timestamp, _ = Unix.mktime unix_tm in
   Int32.of_float timestamp
 ;;
-let int64_of_unix_tm unix_tm = 
+let int64_of_unix_tm unix_tm =
   let timestamp, _ = Unix.mktime unix_tm in
   Int64.of_float timestamp
 ;;
@@ -114,11 +118,7 @@ let time_difference time1 time2 =
 ;;
 
 let string_from_zeroterminated_string zts =
-  let string_length =
-    try
-      String.index zts '\x00'
-    with Not_found -> 12
-  in
+  let string_length = Option.value ~default:12 (String.index zts '\x00') in
   String.sub zts 0 string_length
 ;;
 let zeropad_string_to_length s length =
@@ -157,7 +157,7 @@ let rec random_list limit n =
     (Random.int limit) :: (random_list limit (n - 1))
 ;;
 
-let mkdir_maybe path mode =
-  try Unix.mkdir path mode with
+let mkdir_maybe path perm =
+  try Unix.mkdir ~perm path with
   | Unix.Unix_error (Unix.EEXIST, "mkdir", path) -> ()
 ;;

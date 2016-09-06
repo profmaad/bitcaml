@@ -14,11 +14,14 @@ Executable "bitcaml"
   Path: src
   MainIs: main.ml
   BuildDepends:
+    core,
+    ppx_jane,
     threads,
     bitstring,
     ppx_bitstring,
     ppx_bitstring.ext,
     sha,
     sqlexpr,
+    sqlexpr.ppx,
     cryptokit,
     microecc
