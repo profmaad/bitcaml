@@ -1,4 +1,6 @@
 open! Core.Std
+open Bitcaml_utils.Std
+
 exception Malformed_script;;
 
 type data_item = string;;

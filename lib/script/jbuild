@@ -1,0 +1,12 @@
+(library
+ ((name bitcoin_script)
+  (libraries (bitstring
+	      sha
+	      cryptokit
+	      microecc
+	      core
+	      bitcaml_utils
+	      bitcoin_crypto
+	      bitcoin_protocol))
+  (preprocess (((pps (JANE ppx_tools ppx_bitstring)) All)))
+  ))

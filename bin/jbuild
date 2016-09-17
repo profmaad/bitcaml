@@ -1,0 +1,9 @@
+(executables
+ ((names (bitcaml))
+  (link_flags ("-cclib" "-lmicroecc"))
+  (libraries (core
+	      microecc
+	      bitcoin_script
+	      bitcoin_protocol
+	      bitcoin_network))
+  ))

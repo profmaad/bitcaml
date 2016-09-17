@@ -1,0 +1,8 @@
+(library
+ ((name bitcoin_network)
+  (libraries (core
+	      bitcoin_protocol
+	      bitcoin_blockchain
+	      ))
+  (preprocess (((pps (JANE)) All)))
+  ))

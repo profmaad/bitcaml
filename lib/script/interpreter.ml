@@ -1,6 +1,8 @@
 open! Core.Std
-open Bitcoin_protocol;;
-open Bitcoin_script;;
+open Types
+open Bitcaml_utils.Std
+open Bitcoin_crypto.Std
+open Bitcoin_protocol.Types
 
 exception Disabled_opcode;;
 exception Result_invalid;;
@@ -299,14 +301,14 @@ let checksig_copy_tx_sighashanyonecanpay tx input_index =
 
 let one_hash = (String.make 31 '\x00') ^ "\x01";;
 
-let checksig_check_for_one_hash tx input_index subscript hash_type flags =
+let checksig_check_for_one_hash tx input_index _subscript hash_type _flags =
   (input_index > (List.length tx.transaction_inputs)) ||
     (* bug backwards compatibiliy *)
     ((hash_type = SigHashSingle) && input_index > (List.length tx.transaction_outputs))
 ;;
 
 let checksig_hash_transaction tx input_index subscript hash_type_byte hash_type flags =
-  let txcopy = checksig_copy_tx tx input_index (Bitstring.string_of_bitstring (Bitcoin_script_generator.bitstring_of_script subscript)) in
+  let txcopy = checksig_copy_tx tx input_index (Bitstring.string_of_bitstring (Generator.bitstring_of_script subscript)) in
 
   (* done with basic steps *)
   let txcopy = match hash_type with
@@ -321,18 +323,18 @@ let checksig_hash_transaction tx input_index subscript hash_type_byte hash_type 
       txcopy
   in
 
-  let tx_bitstring = Bitcoin_protocol_generator.bitstring_of_transaction txcopy in
+  let tx_bitstring = Bitcoin_protocol.Generator.bitstring_of_transaction txcopy in
   (* quick-n-dirty one byte to 4 byte little endian... *)
   let hash_type_string = (String.make 1 (Char.of_int_exn hash_type_byte)) ^ (String.make 3 '\x00') in
   let tx_string = Bitstring.string_of_bitstring tx_bitstring ^ hash_type_string in
 
-  Bitcoin_crypto.hash256 tx_string
+  Hashing.hash256 tx_string
 ;;
 
 let check_signature public_key complete_signature (tx, input_index) subscript =
   let hash_type_byte = data_item_byte (-1) complete_signature in
   let hash_type, flags = hash_type_and_flags_of_int hash_type_byte in
-  let signature = String.sub complete_signature 0 ((String.length complete_signature) - 1) in
+  let signature = String.sub complete_signature ~pos:0 ~len:((String.length complete_signature) - 1) in
 
   let hash = if checksig_check_for_one_hash tx input_index subscript hash_type flags then
       one_hash
@@ -340,7 +342,7 @@ let check_signature public_key complete_signature (tx, input_index) subscript =
       checksig_hash_transaction tx input_index subscript hash_type_byte hash_type flags
   in
 
-  Bitcoin_crypto_ecdsa.verify_der_signature public_key hash signature
+  Ecdsa.verify_der_signature public_key hash signature
 ;;
 
 let op_checksig stack tx_data script_after_codesep =
@@ -394,8 +396,8 @@ let op_checkmultisig stack tx_data script_after_codesep =
 ;;
 
 let execute_word stack altstack tx_data script_data = function
-  | Data (opcode, data_item) -> push data_item stack
-  | Nop (opcode) -> ()
+  | Data (_opcode, data_item) -> push data_item stack
+  | Nop (_opcode) -> ()
   | If -> raise Not_implemented
   | NotIf -> raise Not_implemented
   | Else -> raise Not_implemented
@@ -464,11 +466,11 @@ let execute_word stack altstack tx_data script_data = function
   | Max -> op_max stack
   | Within -> op_within stack
 (* Cryptography *)
-  | RIPEMD160 -> hash Bitcoin_crypto.ripemd160 stack
-  | SHA1 -> hash Bitcoin_crypto.sha1 stack
-  | SHA256 -> hash Bitcoin_crypto.sha256 stack
-  | Hash160 -> hash Bitcoin_crypto.hash160 stack
-  | Hash256 -> hash Bitcoin_crypto.hash256 stack
+  | RIPEMD160 -> hash Hashing.ripemd160 stack
+  | SHA1 -> hash Hashing.sha1 stack
+  | SHA256 -> hash Hashing.sha256 stack
+  | Hash160 -> hash Hashing.hash160 stack
+  | Hash256 -> hash Hashing.hash256 stack
   | CodeSeparator -> ()
   | CheckSig -> op_checksig stack tx_data script_data
   | CheckSigVerify -> op_checksig stack tx_data script_data; op_verify stack
@@ -477,7 +479,7 @@ let execute_word stack altstack tx_data script_data = function
 (* Pseudo-words *)
   | PubKeyHash -> raise Result_invalid
   | PubKey -> raise Result_invalid
-  | InvalidOpcode opcode -> raise Result_invalid
+  | InvalidOpcode _opcode -> raise Result_invalid
 (* Reserved *)
   | Reserved -> raise Result_invalid
   | Ver -> raise Result_invalid
@@ -490,7 +492,7 @@ let execute_word stack altstack tx_data script_data = function
 let dump_stack stack =
   let index = ref 0 in
   let print_data_item_with_index item =
-    Printf.printf "\t%d:\t%s\n" !index (Bitcoin_script_pp.pp_string_of_data_item item);
+    Printf.printf "\t%d:\t%s\n" !index (Pretty_print.pp_string_of_data_item item);
     index := !index + 1
   in
   Stack.iter ~f:print_data_item_with_index stack
@@ -555,7 +557,7 @@ let execute_script script tx_data =
       execute_script_ ifstack not_taken_if_level stack altstack tx_data script_after_codesep ws
   in
   try
-    let stack, altstack = execute_script_ (Stack.create ()) 0 (create_stack ()) (create_stack ()) tx_data script script in
+    let stack, _altstack = execute_script_ (Stack.create ()) 0 (create_stack ()) (create_stack ()) tx_data script script in
     Result (pop stack)
   with
   | Disabled_opcode -> Invalid

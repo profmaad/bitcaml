@@ -24,7 +24,7 @@ let double_sha256 = hash256;;
 
 let message_checksum payload =
   let digest = hash256 payload in
-  String.sub digest 0 4
+  String.sub digest ~pos:0 ~len:4
 ;;
 
 let rec merkle_tree_hash hash_f hashes =

@@ -1,5 +1,0 @@
-(executables
- ((names (main))
-  (libraries (bitstring sha sqlexpr cryptokit microecc))
-  (preprocess (((pps (ppx_bitstring ppx_bitstring.ext JANE)) All)))
-  ))

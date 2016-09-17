@@ -1,5 +1,6 @@
 open! Core.Std
-open Bitcoin_script;;
+open Bitcaml_utils.Std
+open Types
 
 let pp_string_of_data_item item =
   match int64_of_data_item item with

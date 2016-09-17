@@ -1,6 +1,6 @@
 open! Core.Std
-open Bitstring;;
-open Bitcoin_script;;
+open Bitstring
+open Types
 
 let bitstring_of_data_item = bitstring_of_string;;
 

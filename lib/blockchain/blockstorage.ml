@@ -1,5 +1,7 @@
 open! Core.Std
-open Bitcoin_protocol;;
+open Bitcaml_utils.Std
+open Bitcoin_protocol.Std
+open Bitcoin_protocol.Types
 
 let folder_levels = 2;;
 
@@ -15,7 +17,7 @@ let check_random_folder storage =
     let stats = Unix.stat path in
     stats.Unix.st_kind = Unix.S_DIR
   with
-  | Unix.Unix_error (Unix.ENOENT, "stat", path) -> false
+  | Unix.Unix_error (Unix.ENOENT, "stat", _path) -> false
 ;;
 
 let init storage =
@@ -51,22 +53,22 @@ let path_of_hash storage hash =
   let rec path_of_hash_ hash levels =
     if levels = 0 then []
     else
-      (String.sub hash 0 2) :: (path_of_hash_ (String.sub hash 2 ((String.length hash) - 2)) (levels - 1))
+      (String.sub hash ~pos:0 ~len:2) :: (path_of_hash_ (String.sub hash ~pos:2 ~len:((String.length hash) - 2)) (levels - 1))
   in
   storage.root_path ^ (String.concat ~sep:"/" (path_of_hash_ hash storage.folder_levels)) ^ "/" ^ hash
 ;;
 let path_of_block storage block =
-  let hash = Utils.hex_encode (Bitcoin_protocol_generator.block_hash block.block_header) in
+  let hash = Utils.hex_encode (Generator.block_hash block.block_header) in
   path_of_hash storage hash
 ;;
 
 let store_block storage block =
   let file_path = path_of_block storage block in
-  Bitstring.bitstring_to_file (Bitcoin_protocol_generator.bitstring_of_block block) file_path
+  Bitstring.bitstring_to_file (Generator.bitstring_of_block block) file_path
 ;;
 let load_block storage hash =
   let file_path = path_of_hash storage hash in
   let block_bitstring = Bitstring.bitstring_of_file file_path in
-  let block, _ = Bitcoin_protocol_parser.parse_block block_bitstring in
+  let block, _ = Parser.parse_block block_bitstring in
   block
 ;;

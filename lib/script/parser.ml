@@ -1,5 +1,5 @@
 open Bitstring;;
-open Bitcoin_script;;
+open Types;;
 
 let parse_int bytes bits =
   match%bitstring bits with
@@ -28,12 +28,12 @@ let parse_data opcode bits =
   | i when (i >= 0x01 && i <= 0x4b) ->
     let data_length = i * 8 in
     (Data (i, string_of_bitstring (takebits data_length bits)), dropbits data_length bits)
-  | i -> raise Malformed_script
+  | _ -> raise Malformed_script
 ;;
 
 let parse_opcode opcode bits =
   match word_of_opcode opcode with
-  | Data (opcode, data) -> parse_data opcode bits
+  | Data (opcode, _) -> parse_data opcode bits
   | word -> (word, bits)
 ;;
 

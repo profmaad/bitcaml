@@ -1,6 +1,8 @@
 open Core.Std
-open Bitcoin_protocol
 open Bitstring
+open Bitcoin_crypto.Std
+open Bitcaml_utils.Std
+open Types
 
 let default_random_nonce = 0x0000deadbeef0000L;;
 
@@ -257,7 +259,7 @@ let bitstring_of_message m =
       magic = m.network;
       command = command_of_message_payload m.payload;
       payload_length = (bitstring_length payload_bitstring) / 8;
-      checksum = Bitcoin_crypto.message_checksum (string_of_bitstring payload_bitstring);
+      checksum = Hashing.message_checksum (string_of_bitstring payload_bitstring);
     } in
   let header_bitstring = bitstring_of_header header in
   [%bitstring
@@ -270,9 +272,9 @@ let bitstring_of_message m =
 (* this ought to be somewhere else, but I can't find a good spot that doesn't result in circular dependency *d'oh* *)
 let transaction_hash tx =
   let tx_bitstring = bitstring_of_transaction tx in
-  Bitcoin_crypto.hash256 (Bitstring.string_of_bitstring tx_bitstring)
+  Hashing.hash256 (Bitstring.string_of_bitstring tx_bitstring)
 ;;
 let block_hash header =
   let header_bitstring = bitstring_of_block_header header in
-  Bitcoin_crypto.double_sha256 (Bitstring.string_of_bitstring header_bitstring)
+  Hashing.double_sha256 (Bitstring.string_of_bitstring header_bitstring)
 ;;

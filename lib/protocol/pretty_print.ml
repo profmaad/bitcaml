@@ -1,5 +1,6 @@
 open! Core.Std
-open Bitcoin_protocol;;
+open Bitcaml_utils.Std
+open Types;;
 
 let pp_string_of_magic = function
   | MainNetwork -> "Main Network"

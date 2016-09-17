@@ -6,7 +6,7 @@ let curve = Microecc.Curve.secp256k1 ()
 let ensure_string_length s length =
   if (String.length s) > length then
     let start = (String.length s) - length in
-    String.sub s start length
+    String.sub s ~pos:start ~len:length
   else
     String.make (length - (String.length s)) '\x00' ^ s
 ;;
@@ -20,14 +20,15 @@ let parse_der_signature bits =
      ; "\x02"         : 1*8          : string
      ; s_length       : 1*8          : littleendian
      ; s              : s_length * 8 : string
-    |} ->
-    Some (r, s)
+     |} ->
+     ignore overall_length;
+     Some (r, s)
   | {| _ |} -> None
 ;;
 
 let extract_public_key s =
   if s.[0] = '\x04' then (
-    let public_key = String.sub s 1 ((String.length s) - 1) in
+    let public_key = String.sub s ~pos:1 ~len:((String.length s) - 1) in
     ensure_string_length public_key 64
   ) else (
     Microecc.decompress curve ~compressed_point:s

@@ -1,5 +1,7 @@
 open! Core.Std
-open Bitcoin_protocol;;
+open Bitcaml_utils.Std
+open Bitcoin_protocol.Std
+open Types
 
 module Sqlexpr = Sqlexpr_sqlite.Make(Sqlexpr_concurrency.Id);;
 module S = Sqlexpr;;
@@ -441,11 +443,11 @@ let block_exists_anywhere db hash =
 ;;
 
 let delete_block_transactions_from_mempool db block =
-  List.iter ~f:(MemoryPool.delete_by_hash db) (List.map ~f:Bitcoin_protocol_generator.transaction_hash block.block_transactions)
+  List.iter ~f:(MemoryPool.delete_by_hash db) (List.map ~f:Generator.transaction_hash block.block_transactions)
 ;;
 
 let update_utxo_with_transaction db block_id tx_index tx =
-  let hash = Bitcoin_protocol_generator.transaction_hash tx in
+  let hash = Generator.transaction_hash tx in
 
   let outpoint_of_txout txout_index txout =
     {
@@ -477,7 +479,7 @@ let update_utxo_with_block db block hash =
 
 let register_transactions_for_block db block block_id =
   let register_tx tx_index tx =
-    let hash = Bitcoin_protocol_generator.transaction_hash tx in
+    let hash = Generator.transaction_hash tx in
     S.execute db [%sqlc "INSERT INTO transactions (hash, block, tx_index) VALUES (%s, %L, %d)"]
       hash
       block_id
@@ -520,8 +522,8 @@ let insert_block_as_orphan hash previous_block_hash log_difficulty header db =
 
 (* we need a special implementation for this, since no previous block exists for the genesis block *)
 let insert_genesis_block db =
-  let hash = Bitcaml_config.testnet3_genesis_block_hash in
-  let header = Bitcaml_config.testnet3_genesis_block_header in
+  let hash   = Config.testnet3_genesis_block_hash in
+  let header = Config.testnet3_genesis_block_header in
   let log_difficulty = log_difficulty_of_difficulty_bits header.block_difficulty_target in
   if not (Block.hash_exists db hash) then
     let record_id = Block.insert db {

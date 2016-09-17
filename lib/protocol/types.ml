@@ -1,4 +1,5 @@
 open! Core.Std
+open Bitcaml_utils.Std
 
 (* Magic value describing the network to use *)
 let coin_size = 100000000L;;
@@ -285,24 +286,24 @@ let string_of_command = function
   | UnknownCommand s -> s
 ;;
 let command_of_message_payload = function
-  | VersionPayload p -> VersionCommand
+  | VersionPayload _ -> VersionCommand
   | VerAckPayload -> VerAckCommand
-  | AddrPayload p -> AddrCommand
+  | AddrPayload _ -> AddrCommand
   | GetAddrPayload -> GetAddrCommand
-  | InvPayload p -> InvCommand
-  | GetDataPayload p -> GetDataCommand
-  | NotFoundPayload p -> NotFoundCommand
-  | GetBlocksPayload p -> GetBlocksCommand
-  | GetHeadersPayload p -> GetHeadersCommand
-  | TxPayload p -> TxCommand
-  | BlockPayload p -> BlockCommand
-  | HeadersPayload p -> HeadersCommand
+  | InvPayload _ -> InvCommand
+  | GetDataPayload _ -> GetDataCommand
+  | NotFoundPayload _ -> NotFoundCommand
+  | GetBlocksPayload _ -> GetBlocksCommand
+  | GetHeadersPayload _ -> GetHeadersCommand
+  | TxPayload _ -> TxCommand
+  | BlockPayload _ -> BlockCommand
+  | HeadersPayload _ -> HeadersCommand
   | MemPoolPayload -> MemPoolCommand
-  | PingPayload p -> PingCommand
-  | PongPayload p -> PongCommand
-  | RejectPayload p -> RejectCommand
-  | AlertPayload p -> AlertCommand
-  | UnknownPayload p -> UnknownCommand "UNKNOWN"
+  | PingPayload _ -> PingCommand
+  | PongPayload _ -> PongCommand
+  | RejectPayload _ -> RejectCommand
+  | AlertPayload _ -> AlertCommand
+  | UnknownPayload _ -> UnknownCommand "UNKNOWN"
 ;;
 
 let services_set_of_int64 i =

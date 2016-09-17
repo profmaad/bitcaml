@@ -1,5 +1,8 @@
 open! Core.Std
-open Bitcoin_protocol;;
+open Bitcaml_utils.Std
+open Bitcoin_crypto.Std
+open Bitcoin_protocol.Std
+open Bitcoin_protocol.Types
 
 (* network rule constants *)
 let max_block_size = 1000000;;
@@ -34,28 +37,28 @@ let bigint_of_hash hash =
   let hash_le = Utils.reverse_string hash in
   let hash_le_hex = Utils.hex_encode hash_le in
 
-  let result_7 = Big_int.big_int_of_int64 (Int64.of_string ("0x" ^ (String.sub hash_le_hex 0 8))) in
+  let result_7 = Big_int.big_int_of_int64 (Int64.of_string ("0x" ^ (String.sub hash_le_hex ~pos:0 ~len:8))) in
   let result = Big_int.shift_left_big_int result_7 (7 * 32) in
 
-  let result_6 = Big_int.big_int_of_int64 (Int64.of_string ("0x" ^ (String.sub hash_le_hex 8 8))) in
+  let result_6 = Big_int.big_int_of_int64 (Int64.of_string ("0x" ^ (String.sub hash_le_hex ~pos:8 ~len:8))) in
   let result = Big_int.or_big_int result (Big_int.shift_left_big_int result_6 (6 * 32)) in
 
-  let result_5 = Big_int.big_int_of_int64 (Int64.of_string ("0x" ^ (String.sub hash_le_hex 16 8))) in
+  let result_5 = Big_int.big_int_of_int64 (Int64.of_string ("0x" ^ (String.sub hash_le_hex ~pos:16 ~len:8))) in
   let result = Big_int.or_big_int result (Big_int.shift_left_big_int result_5 (5 * 32)) in
 
-  let result_4 = Big_int.big_int_of_int64 (Int64.of_string ("0x" ^ (String.sub hash_le_hex 24 8))) in
+  let result_4 = Big_int.big_int_of_int64 (Int64.of_string ("0x" ^ (String.sub hash_le_hex ~pos:24 ~len:8))) in
   let result = Big_int.or_big_int result (Big_int.shift_left_big_int result_4 (4 * 32)) in
 
-  let result_3 = Big_int.big_int_of_int64 (Int64.of_string ("0x" ^ (String.sub hash_le_hex 32 8))) in
+  let result_3 = Big_int.big_int_of_int64 (Int64.of_string ("0x" ^ (String.sub hash_le_hex ~pos:32 ~len:8))) in
   let result = Big_int.or_big_int result (Big_int.shift_left_big_int result_3 (3 * 32)) in
 
-  let result_2 = Big_int.big_int_of_int64 (Int64.of_string ("0x" ^ (String.sub hash_le_hex 40 8))) in
+  let result_2 = Big_int.big_int_of_int64 (Int64.of_string ("0x" ^ (String.sub hash_le_hex ~pos:40 ~len:8))) in
   let result = Big_int.or_big_int result (Big_int.shift_left_big_int result_2 (2 * 32)) in
 
-  let result_1 = Big_int.big_int_of_int64 (Int64.of_string ("0x" ^ (String.sub hash_le_hex 48 8))) in
+  let result_1 = Big_int.big_int_of_int64 (Int64.of_string ("0x" ^ (String.sub hash_le_hex ~pos:48 ~len:8))) in
   let result = Big_int.or_big_int result (Big_int.shift_left_big_int result_1 (1 * 32)) in
 
-  let result_0 = Big_int.big_int_of_int64 (Int64.of_string ("0x" ^ (String.sub hash_le_hex 56 8))) in
+  let result_0 = Big_int.big_int_of_int64 (Int64.of_string ("0x" ^ (String.sub hash_le_hex ~pos:56 ~len:8))) in
   let result = Big_int.or_big_int result result_0 in
 
   result
@@ -74,12 +77,12 @@ let verify_hash_against_difficulty_bits hash bits =
 ;;
 
 let hash_of_transaction tx =
-  let tx_bitstring = Bitcoin_protocol_generator.bitstring_of_transaction tx in
-  Bitcoin_crypto.hash256 (Bitstring.string_of_bitstring tx_bitstring)
+  let tx_bitstring = Generator.bitstring_of_transaction tx in
+  Hashing.hash256 (Bitstring.string_of_bitstring tx_bitstring)
 ;;
 let merkle_root_of_block block =
   let transaction_hashes = List.map ~f:hash_of_transaction block.block_transactions in
-  Bitcoin_crypto.merkle_tree_hash Bitcoin_crypto.hash256 transaction_hashes
+  Hashing.merkle_tree_hash Hashing.hash256 transaction_hashes
 ;;
 
 let transaction_input_is_coinbase txin =

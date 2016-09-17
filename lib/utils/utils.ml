@@ -57,7 +57,7 @@ let hex_decode_rev s = reverse_string (hex_decode s);;
 let reverse_hash_string s =
   let rec blit_reverse_hash_string src dst length byte_index =
     if byte_index*2 < length then (
-      String.blit src (byte_index*2) dst (length - ((byte_index + 1) * 2)) 2;
+      String.blit ~src ~src_pos:(byte_index*2) ~dst ~dst_pos:(length - ((byte_index + 1) * 2)) ~len:2;
       blit_reverse_hash_string src dst length (byte_index + 1)
     )
     else dst
@@ -119,7 +119,7 @@ let time_difference time1 time2 =
 
 let string_from_zeroterminated_string zts =
   let string_length = Option.value ~default:12 (String.index zts '\x00') in
-  String.sub zts 0 string_length
+  String.sub zts ~pos:0 ~len:string_length
 ;;
 let zeropad_string_to_length s length =
   s ^ (String.make (length - (String.length s)) '\x00')
@@ -134,8 +134,8 @@ let remove_nth list position =
   let rec remove_nth_ list position acc =
     match list, position with
     | [], _ -> List.rev acc
-    | x :: xs, 0 -> (List.rev acc) @ xs
-    | x :: xs, p -> remove_nth_ xs (position - 1) (x :: acc)
+    | _ :: xs, 0 -> (List.rev acc) @ xs
+    | x :: xs, _ -> remove_nth_ xs (position - 1) (x :: acc)
   in
   remove_nth_ list position []
 ;;
@@ -159,5 +159,5 @@ let rec random_list limit n =
 
 let mkdir_maybe path perm =
   try Unix.mkdir ~perm path with
-  | Unix.Unix_error (Unix.EEXIST, "mkdir", path) -> ()
+  | Unix.Unix_error (Unix.EEXIST, "mkdir", _) -> ()
 ;;

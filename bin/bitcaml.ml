@@ -1,33 +1,37 @@
 open! Core.Std
-open Bitcoin.Protocol
+open Bitcaml_utils.Std
+open Bitcoin_protocol.Std
+open Types
+open Bitcoin_blockchain.Std
+open Bitcoin_network.Std
 
 let local_version () =
-  let services_set = Service.Set.singleton Bitcoin.Protocol.Service.NetworkNodeService in
+  let services_set = Service.Set.singleton Service.NetworkNodeService in
   let localhost_address_string = (String.make 10 '\x00') ^ "\xff\xff" ^ "\127\000\000\001" in
   let receiver_address = {
-    Bitcoin.Protocol.services = services_set;
+    services = services_set;
     address = localhost_address_string;
-    port = Bitcaml_config.peer_port;
+    port = Config.peer_port;
   } in
   let sender_address = receiver_address in
   let random_nonce = Random.int64 Int64.max_value in
   {
-    Bitcoin.Protocol.protocol_version = Bitcaml_config.bitcoin_protocol_version;
+    protocol_version = Config.bitcoin_protocol_version;
     node_services = services_set;
     timestamp = Unix.localtime (Unix.time ());
     receiver_address = receiver_address;
     sender_address = Some sender_address;
     random_nonce = Some random_nonce;
-    user_agent = Some Bitcaml_config.user_agent;
+    user_agent = Some Config.user_agent;
     start_height = Some 0;
     relay = Some false;
   }
 ;;
 
 let connect_to_peer ip_address port =
-  let socket = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
+  let socket = Unix.socket ~domain:Unix.PF_INET ~kind:Unix.SOCK_STREAM ~protocol:0 in
   let peer_addr = Unix.ADDR_INET(Unix.Inet_addr.of_string ip_address, port) in
-  Unix.connect socket peer_addr;
+  Unix.connect socket ~addr:peer_addr;
   socket
 ;;
 let close_peer_connection socket =
@@ -35,53 +39,53 @@ let close_peer_connection socket =
   Unix.close socket
 ;;
 
-let no_debug peer = { peer with Bitcoin.Peer.peer_debug = false };;
-let debug peer = { peer with Bitcoin.Peer.peer_debug = true };;
+let no_debug peer = { peer with Peer.peer_debug = false };;
+let debug peer = { peer with Peer.peer_debug = true };;
 
 (* main *)
 let () =
   Random.self_init ();
 
   print_string "Sanity testing genesis block against its own hash...\t";
-  let calculated_genesis_hash = Bitcoin.Protocol.Generator.block_hash Bitcaml_config.testnet3_genesis_block_header in
-  if calculated_genesis_hash = Bitcaml_config.testnet3_genesis_block_hash then
+  let calculated_genesis_hash = Generator.block_hash Config.testnet3_genesis_block_header in
+  if calculated_genesis_hash = Config.testnet3_genesis_block_hash then
     print_endline "PASSED"
   else (
-    Printf.printf"FAILED: %s != %s\n" calculated_genesis_hash Bitcaml_config.testnet3_genesis_block_hash;
+    Printf.printf"FAILED: %s != %s\n" calculated_genesis_hash Config.testnet3_genesis_block_hash;
     exit 1;
   );
 
   print_string "Testing difficulty calculation...\t";
   let difficulty_test_results = [
-    Bitcoin.Blockchain.DB.log_difficulty_of_difficulty_bits { Bitcoin.Protocol.bits_base = 0x00ffff; bits_exponent = 0x1d; };
-    Bitcoin.Blockchain.DB.log_difficulty_of_difficulty_bits { Bitcoin.Protocol.bits_base = 0x0404cb; bits_exponent = 0x1b; };
+    Db.log_difficulty_of_difficulty_bits { bits_base = 0x00ffff; bits_exponent = 0x1d; };
+    Db.log_difficulty_of_difficulty_bits { bits_base = 0x0404cb; bits_exponent = 0x1b; };
   ] in
   print_endline (String.concat ~sep:", " (List.map ~f:(Printf.sprintf "%f") difficulty_test_results));
 
   print_endline "Testing script parser and pretty printer...";
   let test_script = "\x76\xa9\x14\x2f\xef\x8e\xdc\xc4\x50\x19\xac\xba\x3b\xb1\x46\xb7\x6c\xbd\x2f\x84\x8b\xe5\xd6\x88\xac" in
-  let parsed_script = Bitcoin.Script.Parser.parse_script (Bitstring.bitstring_of_string test_script) in
-  Bitcoin.Script.PP.print_script parsed_script;
+  let parsed_script = Bitcoin_script.Std.Parser.parse_script (Bitstring.bitstring_of_string test_script) in
+  Bitcoin_script.Std.Pretty_print.print_script parsed_script;
   print_endline "DONE";
 
   print_string "Sanity testing script generator against parser...\t";
   let test_script = "\x76\xa9\x14\x2f\xef\x8e\xdc\xc4\x50\x19\xac\xba\x3b\xb1\x46\xb7\x6c\xbd\x2f\x84\x8b\xe5\xd6\x88\xac" in
-  let parsed_script = Bitcoin.Script.Parser.parse_script (Bitstring.bitstring_of_string test_script) in
-  let generated_script = Bitstring.string_of_bitstring (Bitcoin.Script.Generator.bitstring_of_script parsed_script) in
+  let parsed_script = Bitcoin_script.Std.Parser.parse_script (Bitstring.bitstring_of_string test_script) in
+  let generated_script = Bitstring.string_of_bitstring (Bitcoin_script.Std.Generator.bitstring_of_script parsed_script) in
   if test_script = generated_script then print_endline "PASSED"
   else
     Printf.printf "FAILED:\nExpected: %s\nActual  : %s\n" (Utils.hex_string_of_string test_script) (Utils.hex_string_of_string generated_script)
   ;
 
   print_endline "Testing script engine...";
-  let block_new, _ = Bitcoin.Protocol.Parser.parse_block (Bitstring.bitstring_of_file "/tmp/block_new.dat") in
+  let block_new, _ = Parser.parse_block (Bitstring.bitstring_of_file "/tmp/block_new.dat") in
   let block_new = Option.value_exn block_new in
-  let tx_new = List.nth_exn block_new.Bitcoin.Protocol.block_transactions 1 in
-  Bitcoin.Protocol.PP.print_transaction tx_new; Out_channel.newline stdout;
-  let block_old, _ = Bitcoin.Protocol.Parser.parse_block (Bitstring.bitstring_of_file "/tmp/block_old.dat") in
+  let tx_new = List.nth_exn block_new.block_transactions 1 in
+  Pretty_print.print_transaction tx_new; Out_channel.newline stdout;
+  let block_old, _ = Parser.parse_block (Bitstring.bitstring_of_file "/tmp/block_old.dat") in
   let block_old = Option.value_exn block_old in
-  let tx_old = List.nth_exn block_old.Bitcoin.Protocol.block_transactions 4 in
-  Bitcoin.Protocol.PP.print_transaction tx_old; Out_channel.newline stdout;
+  let tx_old = List.nth_exn block_old.block_transactions 4 in
+  Pretty_print.print_transaction tx_old; Out_channel.newline stdout;
 
   (* let tx_new = { *)
   (*   transaction_data_format_version = 1; *)
@@ -108,34 +112,34 @@ let () =
   (*   transaction_lock_time = AlwaysLockedTransaction; *)
   (* } in *)
 
-  let pubkey_script = (List.hd_exn tx_new.Bitcoin.Protocol.transaction_inputs).Bitcoin.Protocol.signature_script in
-  let pubkey_script_asm = Bitcoin.Script.Parser.parse_script (Bitstring.bitstring_of_string pubkey_script) in
+  let pubkey_script = (List.hd_exn tx_new.transaction_inputs).signature_script in
+  let pubkey_script_asm = Bitcoin_script.Std.Parser.parse_script (Bitstring.bitstring_of_string pubkey_script) in
 
-  let output_script = (List.nth_exn tx_old.Bitcoin.Protocol.transaction_outputs 1).Bitcoin.Protocol.output_script in
+  let output_script = (List.nth_exn tx_old.transaction_outputs 1).output_script in
   (* let output_script = Utils.hex_decode "410411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3ac" in *)
-  let output_script_asm = Bitcoin.Script.Parser.parse_script (Bitstring.bitstring_of_string output_script) in
+  let output_script_asm = Bitcoin_script.Std.Parser.parse_script (Bitstring.bitstring_of_string output_script) in
 
-  let asm = pubkey_script_asm @ [Bitcoin.Script.CodeSeparator] @ output_script_asm in
-  Bitcoin.Script.PP.print_script asm;
+  let asm = pubkey_script_asm @ [Bitcoin_script.Std.Types.CodeSeparator] @ output_script_asm in
+  Bitcoin_script.Pretty_print.print_script asm;
 
   print_endline "--------------------------";
-  let script_result = Bitcoin.Script.Interpreter.execute_script asm (tx_new, 0) in
+  let script_result = Bitcoin_script.Std.Interpreter.execute_script asm (tx_new, 0) in
   print_endline "--------------------------";
   ( match script_result with
-  | Bitcoin.Script.Interpreter.Result item ->
-    Printf.printf "Script result: %s\n" (Bitcoin.Script.PP.pp_string_of_data_item item);
-    if Bitcoin_script.bool_of_data_item item then print_endline "PASSED" else print_endline "FAILED"
-  | Bitcoin.Script.Interpreter.Invalid -> print_endline "Script result: INVALID"; print_endline "FAILED"
+  | Bitcoin_script.Std.Interpreter.Result item ->
+    Printf.printf "Script result: %s\n" (Bitcoin_script.Std.Pretty_print.pp_string_of_data_item item);
+    if Bitcoin_script.Std.Types.bool_of_data_item item then print_endline "PASSED" else print_endline "FAILED"
+  | Bitcoin_script.Std.Interpreter.Invalid -> print_endline "Script result: INVALID"; print_endline "FAILED"
   );
 
   print_endline "Testing merkle tree hashing...";
-  let merkle_root_new = Bitcoin.Rules.merkle_root_of_block block_new in
+  let merkle_root_new = Rules.merkle_root_of_block block_new in
   ( if merkle_root_new = block_new.block_header.merkle_root then
       Printf.printf "PASSED: %s =\n        %s\n" (Utils.hex_string_of_string merkle_root_new) (Utils.hex_string_of_string block_new.block_header.merkle_root)
     else
       Printf.printf "FAILED: %s !=\n        %s\n" (Utils.hex_string_of_string merkle_root_new) (Utils.hex_string_of_string block_new.block_header.merkle_root)
   );
-  let merkle_root_old = Bitcoin.Rules.merkle_root_of_block block_old in
+  let merkle_root_old = Rules.merkle_root_of_block block_old in
   ( if merkle_root_old = block_old.block_header.merkle_root then
       Printf.printf "PASSED: %s =\n        %s\n" (Utils.hex_string_of_string merkle_root_old) (Utils.hex_string_of_string block_old.block_header.merkle_root)
     else
@@ -144,32 +148,32 @@ let () =
 
   print_string "Sanity testing weird script int encoding...\t";
   let test_value = "\xff\xff\xff\x82" in
-  let decoded_test_value = Option.value_exn (Bitcoin.Script.int64_of_data_item test_value) in
-  let encoded_test_value = Bitcoin.Script.data_item_of_int64 decoded_test_value in
+  let decoded_test_value = Option.value_exn (Bitcoin_script.Std.Types.int64_of_data_item test_value) in
+  let encoded_test_value = Bitcoin_script.Std.Types.data_item_of_int64 decoded_test_value in
   ( if (compare test_value encoded_test_value) <> 0 then
     Printf.printf "FAILED: %s -> %Ld -> %s\n" (Utils.hex_encode test_value) decoded_test_value (Utils.hex_encode encoded_test_value)
   else
     print_endline "PASSED"
   );
 
-  Printf.printf "Opening and initializing blockchain at %s...\t" Bitcaml_config.testnet3_folder;
-  let blockchain = Bitcoin.Blockchain.init_default Bitcaml_config.testnet3_folder in
+  Printf.printf "Opening and initializing blockchain at %s...\t" Config.testnet3_folder;
+  let blockchain = Blockchain.init_default Config.testnet3_folder in
   print_endline "DONE";
 
   print_string "Establishing TCP connection to peer...\t\t";
-  let peer_socket = connect_to_peer Bitcaml_config.peer_ip_address Bitcaml_config.peer_port in
+  let peer_socket = connect_to_peer Config.peer_ip_address Config.peer_port in
   print_endline "DONE";
 
   let peer = {
-    Bitcoin.Peer.peer_network = Bitcoin.Protocol.TestNet3;
+    Peer.peer_network = TestNet3;
     local_version = local_version ();
-    peer_version = Bitcoin.Peer.default_version;
+    peer_version = Peer.default_version;
     peer_socket = peer_socket;
     peer_debug = true;
     blockchain = blockchain;
   } in
 
-  Bitcoin.Peer.handle_peer peer;
+  Peer.handle_peer peer;
 
   (* print_string "Retrieving TestNet3 genesis block...\t\t"; *)
   (* ( match Bitcoin.Peer.get_block peer Bitcaml_config.testnet3_genesis_block_hash with *)
