@@ -1,379 +1,414 @@
 open! Core.Std
 open Bitcaml_utils.Std
 
-(* Magic value describing the network to use *)
-let coin_size = 100000000L;;
-let satoshis_per_bitoin = 100000000.0;;
+module Magic = struct
+  type t =
+    | Unknown of int32
+    | MainNetwork
+    | TestNet
+    | TestNet3
+  [@@deriving compare, sexp]
 
-type magic =
-| UnknownMagic of int32
-| MainNetwork
-| TestNet
-| TestNet3
-;;
+  let of_int32 = function
+    | 0xD9B4BEF9l -> MainNetwork
+    | 0xDAB5BFFAl -> TestNet
+    | 0x0709110Bl -> TestNet3
+    | i           -> Unknown i
+  ;;
 
-type command =
-| UnknownCommand of string
-| VersionCommand
-| VerAckCommand
-| AddrCommand
-| InvCommand
-| GetDataCommand
-| NotFoundCommand
-| GetBlocksCommand
-| GetHeadersCommand
-| TxCommand
-| BlockCommand
-| HeadersCommand
-| GetAddrCommand
-| MemPoolCommand
-| PingCommand
-| PongCommand
-| RejectCommand
-| AlertCommand
-| FilterLoadCommand
-| FilterAddCommand
-| FilterClearCommand
-| MerkleBlockCommand
-;;
+  let to_int32 = function
+    | MainNetwork -> 0xD9B4BEF9l
+    | TestNet     -> 0xDAB5BFFAl
+    | TestNet3    -> 0x0709110Bl
+    | Unknown i   -> i
+  ;;
+end
+
+module Command = struct
+  type t =
+    | Unknown of string
+    | Version
+    | VerAck
+    | Addr
+    | Inv
+    | GetData
+    | NotFound
+    | GetBlocks
+    | GetHeaders
+    | Tx
+    | Block
+    | Headers
+    | GetAddr
+    | MemPool
+    | Ping
+    | Pong
+    | Reject
+    | Alert
+    | FilterLoad
+    | FilterAdd
+    | FilterClear
+    | MerkleBlock
+  [@@deriving compare, sexp]
+
+  let of_string = function
+    | "version"     -> Version
+    | "verack"      -> VerAck
+    | "addr"        -> Addr
+    | "inv"         -> Inv
+    | "getdata"     -> GetData
+    | "notfound"    -> NotFound
+    | "getblocks"   -> GetBlocks
+    | "getheaders"  -> GetHeaders
+    | "tx"          -> Tx
+    | "block"       -> Block
+    | "headers"     -> Headers
+    | "getaddr"     -> GetAddr
+    | "mempool"     -> MemPool
+    | "ping"        -> Ping
+    | "pong"        -> Pong
+    | "reject"      -> Reject
+    | "alert"       -> Alert
+    | "filterload"  -> FilterLoad
+    | "filteradd"   -> FilterAdd
+    | "filterclear" -> FilterClear
+    | "merkleblock" -> MerkleBlock
+    | s             -> Unknown s
+  ;;
+
+  let to_string = function
+    | Version     -> "version"
+    | VerAck      -> "verack"
+    | Addr        -> "addr"
+    | Inv         -> "inv"
+    | GetData     -> "getdata"
+    | NotFound    -> "notfound"
+    | GetBlocks   -> "getblocks"
+    | GetHeaders  -> "getheaders"
+    | Tx          -> "tx"
+    | Block       -> "block"
+    | Headers     -> "headers"
+    | GetAddr     -> "getaddr"
+    | MemPool     -> "mempool"
+    | Ping        -> "ping"
+    | Pong        -> "pong"
+    | Reject      -> "reject"
+    | Alert       -> "alert"
+    | FilterLoad  -> "filterload"
+    | FilterAdd   -> "filteradd"
+    | FilterClear -> "filterclear"
+    | MerkleBlock -> "merkleblock"
+    | Unknown s   -> s
+  ;;
+end
 
 (* Services defined for the services field *)
 module Service = struct
   module T = struct
     type t =
-      | NetworkNodeService
-    [@@deriving compare, sexp]
-    ;;
+      | NetworkNode
+    [@@deriving compare, enumerate, sexp]
   end
   include T
 
   include Comparable.Make(T)
+
+  let to_bitmask = function
+    | NetworkNode -> 0x0000000000000001L
+  ;;
+
+  let of_int64 i =
+    List.fold all ~init:Set.empty ~f:(fun set t ->
+        match Int64.(bit_and i (to_bitmask t) > zero) with
+        | false -> set
+        | true  -> Set.add set t)
+  ;;
+
+  let to_int64 set =
+    Set.fold set ~init:Int64.zero ~f:(fun acc t ->
+        Int64.bit_or acc (to_bitmask t))
+  ;;
 end
 
-type network_address =
-  {
-    services : Service.Set.t;
-    address : string;
-    port : int;
-  };;
+module Network_address = struct
+  type t =
+    { services : Service.Set.t
+    ; address  : string
+    ; port     : int
+    } [@@deriving compare, fields, sexp]
+end
 
-type header =
-  {
-    magic : magic;
-    command : command;
-    payload_length : int;
-    checksum : string;
-  };;
+module Header = struct
+  type t =
+    { magic          : Magic.t
+    ; command        : Command.t
+    ; payload_length : int
+    ; checksum       : string
+    } [@@deriving compare, fields, sexp]
+end
 
-type version_message =
-  {
-    protocol_version : int;
-    node_services : Service.Set.t;
-    timestamp : Unix.tm;
-    receiver_address : network_address;
-    sender_address : network_address option;
-    random_nonce : int64 option;
-    user_agent : string option;
-    start_height : int option;
-    relay : bool option;
-  };;
+module Transaction = struct
+  module Lock_time = struct
+    type t =
+      | AlwaysLocked
+      | BlockLocked     of int32
+      | TimestampLocked of Time.t
+    [@@deriving compare, sexp]
 
-type timestamped_network_address =
-  {
-    address_timestamp : Unix.tm option;
-    network_address : network_address;
-  };;
 
-type addr_message =
-  {
-    addresses : timestamped_network_address list;
-  };;
+    let of_int32 = function
+      | 0x0l                    -> AlwaysLocked
+      | i when (i < 500000000l) -> BlockLocked i
+      | i                       -> TimestampLocked (Int32.to_float i |> Time.of_epoch)
+    ;;
 
-type inventory_item_type =
-| TransactionInventoryItem
-| BlockInventoryItem
-| UnknownInventoryItem of int
-;;
+    let to_in32 = function
+      | AlwaysLocked              -> 0x0l
+      | BlockLocked i             -> i
+      | TimestampLocked timestamp ->
+        Time.to_epoch timestamp
+        |> Int32.of_float
+    ;;
+  end
 
-type inventory_item =
-  {
-    inventory_item_type : inventory_item_type;
-    inventory_item_hash : string;
-  };;
+  module Outpoint = struct
+    type t =
+      { referenced_transaction_hash : string
+      ; index                       : int32
+      } [@@deriving compare, fields, sexp]
+  end
 
-type inventory_list_message =
-  {
-    inventory : inventory_item list;
-  };;
+  module Input = struct
+    type t =
+      { previous_output             : Outpoint.t
+      ; signature_script            : string
+      ; transaction_sequence_number : int32
+      } [@@deriving compare, fields, sexp]
+  end
 
-type block_locator_list_message =
-  {
-    block_protocol_version : int;
-    block_locator_hashes : string list;
-    block_locator_hash_stop : string;
-  };;
+  module Output = struct
+    type t =
+      { value  : int64
+      ; script : string
+      } [@@deriving compare, fields, sexp]
+  end
 
-type transaction_lock_time =
-| AlwaysLockedTransaction
-| BlockLockedTransaction of int32
-| TimestampLockedTransaction of Unix.tm
-;;
-type transaction_outpoint =
-  {
-    referenced_transaction_hash : string;
-    transaction_output_index : int32;
-  };;
-type transaction_input =
-  {
-    previous_transaction_output : transaction_outpoint;
-    signature_script : string;
-    transaction_sequence_number : int32;
-  };;
-type transaction_output =
-  {
-    transaction_output_value : int64;
-    output_script : string;
-  };;
-type transaction =
-  {
-    transaction_data_format_version : int;
-    transaction_inputs : transaction_input list;
-    transaction_outputs : transaction_output list;
-    transaction_lock_time : transaction_lock_time;
-  };;
+  type t =
+    { version   : int32
+    ; inputs    : Input.t list
+    ; outputs   : Output.t list
+    ; lock_time : Lock_time.t
+    } [@@deriving compare, fields, sexp]
+end
 
-type difficulty_bits =
-  {
-    bits_base : int;
-    bits_exponent : int;
-  }
+module Block = struct
+  module Difficulty = struct
+    type t =
+      { base     : int32
+      ; exponent : int32
+      } [@@deriving compare, fields, sexp]
 
-type block_header =
-  {
-    block_version : int;
-    previous_block_hash : string;
-    merkle_root : string;
-    block_timestamp : Unix.tm;
-    block_difficulty_target : difficulty_bits;
-    block_nonce : int32;
-  };;
-type protocol_block_header =
-  {
-    basic_block_header : block_header;
-    block_transaction_count : int64;
-  };;
-type block =
-  {
-    block_header : block_header;
-    block_transactions : transaction list;
-  };;
+    let of_int32 i =
+      Fields.create
+        ~base:(Int32.bit_and i 0x00ffffffl)
+        ~exponent:(Int32.shift_right_logical (Int32.bit_and i 0xff000000l) 24)
+    ;;
 
-type headers_message =
-  {
-    block_headers : protocol_block_header list;
-  };;
+    let to_int32 t =
+      let exponent = Int32.shift_left (exponent t) 24 in
+      Int32.bit_or exponent (base t)
+    ;;
+  end
 
-type nonce_message =
-  {
-    message_nonce : int64;
-  };;
+  module Header = struct
+    type t =
+      { version             : int32
+      ; previous_block_hash : string
+      ; merkle_root         : string
+      ; timestamp           : Time.t
+      ; difficulty_target   : Difficulty.t
+      ; nonce               : int32
+      } [@@deriving compare, fields, sexp]
+  end
 
-type rejection_reason =
-| RejectionMalformed
-| RejectionInvalid
-| RejectionObsolete
-| RejectionDuplicate
-| RejectionNonstandard
-| RejectionDust
-| RejectionInsufficientFee
-| RejectionCheckpoint
-| RejectionUnknown of int
-;;
+  module Protocol_header = struct
+    type t =
+      { basic_header      : Header.t
+      ; transaction_count : int64
+      } [@@deriving compare, fields, sexp]
+  end
 
-type reject_message =
-  {
-    rejected_message : string;
-    rejection_code : rejection_reason;
-    rejection_reason : string;
-  };;
+  type t =
+    { header       : Header.t
+    ; transactions : Transaction.t list
+    } [@@deriving compare, fields, sexp]
+end
 
-type message_payload =
-| VersionPayload of version_message
-| VerAckPayload
-| AddrPayload of addr_message
-| GetAddrPayload
-| InvPayload of inventory_list_message
-| GetDataPayload of inventory_list_message
-| NotFoundPayload of inventory_list_message
-| GetBlocksPayload of block_locator_list_message
-| GetHeadersPayload of block_locator_list_message
-| TxPayload of transaction
-| BlockPayload of block
-| HeadersPayload of headers_message
-| MemPoolPayload
-| PingPayload of nonce_message
-| PongPayload of nonce_message
-| RejectPayload of reject_message
-| AlertPayload of Bitstring.t (* TODO: actually parse alerts and verify the signature *)
-| UnknownPayload of Bitstring.t
-;;
+module Messages = struct
+  module Version = struct
+    type t =
+      { protocol_version : int
+      ; node_services    : Service.Set.t
+      ; timestamp        : Time.t
+      ; receiver_address : Network_address.t
+      ; sender_address   : Network_address.t option
+      ; random_nonce     : int64 option
+      ; user_agent       : string option
+      ; start_height     : int option
+      ; relay            : bool option
+      } [@@deriving compare, fields, sexp]
+  end
 
-type message =
-  {
-    network : magic;
-    payload : message_payload;
-  };;
+  module Addr = struct
+    module Item = struct
+      type t =
+        { timestamp : Time.t option
+        ; address   : Network_address.t
+        } [@@deriving compare, fields, sexp]
+    end
 
-let magic_of_int32 = function
-  | 0xD9B4BEF9l -> MainNetwork
-  | 0xDAB5BFFAl -> TestNet
-  | 0x0709110Bl -> TestNet3
-  | i -> UnknownMagic i
-;;
-let int32_of_magic = function
-  | MainNetwork -> 0xD9B4BEF9l
-  | TestNet -> 0xDAB5BFFAl
-  | TestNet3 -> 0x0709110Bl
-  | UnknownMagic i -> i
-;;
+    type t = Item.t list [@@deriving compare, sexp]
+  end
 
-let command_of_string = function
-  | "version" -> VersionCommand
-  | "verack" -> VerAckCommand
-  | "addr" -> AddrCommand
-  | "inv" -> InvCommand
-  | "getdata" -> GetDataCommand
-  | "notfound" -> NotFoundCommand
-  | "getblocks" -> GetBlocksCommand
-  | "getheaders" -> GetHeadersCommand
-  | "tx" -> TxCommand
-  | "block" -> BlockCommand
-  | "headers" -> HeadersCommand
-  | "getaddr" -> GetAddrCommand
-  | "mempool" -> MemPoolCommand
-  | "ping" -> PingCommand
-  | "pong" -> PongCommand
-  | "reject" -> RejectCommand
-  | "alert" -> AlertCommand
-  | "filterload" -> FilterLoadCommand
-  | "filteradd" -> FilterAddCommand
-  | "filterclear" -> FilterClearCommand
-  | "merkleblock" -> MerkleBlockCommand
-  | s -> UnknownCommand s
-;;
-let string_of_command = function
-  | VersionCommand -> "version"
-  | VerAckCommand -> "verack"
-  | AddrCommand -> "addr"
-  | InvCommand -> "inv"
-  | GetDataCommand -> "getdata"
-  | NotFoundCommand -> "notfound"
-  | GetBlocksCommand -> "getblocks"
-  | GetHeadersCommand -> "getheaders"
-  | TxCommand -> "tx"
-  | BlockCommand -> "block"
-  | HeadersCommand -> "headers"
-  | GetAddrCommand -> "getaddr"
-  | MemPoolCommand -> "mempool"
-  | PingCommand -> "ping"
-  | PongCommand -> "pong"
-  | RejectCommand -> "reject"
-  | AlertCommand -> "alert"
-  | FilterLoadCommand -> "filterload"
-  | FilterAddCommand -> "filteradd"
-  | FilterClearCommand -> "filterclear"
-  | MerkleBlockCommand -> "merkleblock"
-  | UnknownCommand s -> s
-;;
-let command_of_message_payload = function
-  | VersionPayload _ -> VersionCommand
-  | VerAckPayload -> VerAckCommand
-  | AddrPayload _ -> AddrCommand
-  | GetAddrPayload -> GetAddrCommand
-  | InvPayload _ -> InvCommand
-  | GetDataPayload _ -> GetDataCommand
-  | NotFoundPayload _ -> NotFoundCommand
-  | GetBlocksPayload _ -> GetBlocksCommand
-  | GetHeadersPayload _ -> GetHeadersCommand
-  | TxPayload _ -> TxCommand
-  | BlockPayload _ -> BlockCommand
-  | HeadersPayload _ -> HeadersCommand
-  | MemPoolPayload -> MemPoolCommand
-  | PingPayload _ -> PingCommand
-  | PongPayload _ -> PongCommand
-  | RejectPayload _ -> RejectCommand
-  | AlertPayload _ -> AlertCommand
-  | UnknownPayload _ -> UnknownCommand "UNKNOWN"
-;;
+  module Inventory = struct
+    module Item = struct
+      module Type = struct
+        type t =
+          | Transaction
+          | Block
+          | Unknown of int32
+        [@@deriving compare, sexp]
 
-let services_set_of_int64 i =
-  let services_list = ref [] in
-  if (Int64.bit_and i 0x0000000000000001L) > 0L then services_list := Service.NetworkNodeService :: !services_list;
-  List.fold ~init:Service.Set.empty ~f:Set.add !services_list
-;;
-let int64_of_services_set set =
-  let int64_of_service = function
-    | Service.NetworkNodeService -> 0x0000000000000001L
-  in
-  Set.to_list set
-  |> List.map ~f:int64_of_service
-  |> List.fold ~init:Int64.zero ~f:Int64.bit_or
-;;
+        let of_int32 = function
+          | 0x1l -> Transaction
+          | 0x2l -> Block
+          | i    -> Unknown i
+        ;;
 
-let inventory_item_type_of_int32 = function
-  | 0x1l -> TransactionInventoryItem
-  | 0x2l -> BlockInventoryItem
-  | i    -> UnknownInventoryItem (Int.of_int32_exn i)
-;;
-let int32_of_inventory_item_type = function
-  | TransactionInventoryItem -> 0x1l
-  | BlockInventoryItem       -> 0x2l
-  | UnknownInventoryItem i   -> (Int32.of_int_exn i)
-;;
+        let to_int32 = function
+          | Transaction -> 0x1l
+          | Block       -> 0x2l
+          | Unknown i   -> i
+        ;;
+      end
 
-let transaction_lock_time_of_int32 = function
-  | 0x0l -> AlwaysLockedTransaction
-  | i when (i < 500000000l) -> BlockLockedTransaction i
-  | i -> TimestampLockedTransaction (Utils.unix_tm_of_int32 i)
-;;
-let int32_of_transaction_lock_time = function
-  | AlwaysLockedTransaction -> 0x0l
-  | BlockLockedTransaction i -> i
-  | TimestampLockedTransaction timestamp -> Utils.int32_of_unix_tm timestamp
-;;
+      type t =
+        { type_ : Type.t
+        ; hash  : string
+        } [@@deriving compare, fields, sexp]
+    end
 
-let rejection_reason_of_int = function
-  | 0x01 -> RejectionMalformed
-  | 0x10 -> RejectionInvalid
-  | 0x11 -> RejectionObsolete
-  | 0x12 -> RejectionDuplicate
-  | 0x40 -> RejectionNonstandard
-  | 0x41 -> RejectionDust
-  | 0x42 -> RejectionInsufficientFee
-  | 0x43 -> RejectionCheckpoint
-  | i -> RejectionUnknown i
-;;
-let int_of_rejection_reason = function
-  | RejectionMalformed -> 0x01
-  | RejectionInvalid -> 0x10
-  | RejectionObsolete -> 0x11
-  | RejectionDuplicate -> 0x12
-  | RejectionNonstandard -> 0x40
-  | RejectionDust -> 0x41
-  | RejectionInsufficientFee -> 0x42
-  | RejectionCheckpoint -> 0x43
-  | RejectionUnknown i -> i
-;;
+    type t = Item.t list [@@deriving compare, sexp]
+  end
 
-let difficulty_bits_of_int32 i =
-  let exponent = Int32.shift_right_logical (Int32.bit_and i 0xff000000l) 24 in
-  let base = Int32.bit_and i 0x00ffffffl in
-  {
-    bits_base = Int32.to_int_exn base;
-    bits_exponent = Int32.to_int_exn exponent;
-  }
-;;
-let int32_of_difficulty_bits bits =
-  let exponent = Int32.shift_left (Int32.of_int_exn bits.bits_exponent) 24 in
-  Int32.bit_or exponent (Int32.of_int_exn bits.bits_base)
-;;
+  module Getblocks = struct
+    type t =
+      { protocol_version : int32
+      ; hashes           : string list
+      ; hash_stop        : string
+      } [@@deriving compare, fields, sexp]
+  end
+
+  module Headers = struct
+    type t = Block.Protocol_header.t list [@@deriving compare, sexp]
+  end
+
+  module Nonce = struct
+    type t =
+      { nonce : int64
+      } [@@deriving compare, fields, sexp]
+  end
+
+  module Reject = struct
+    module Reason = struct
+      type t =
+        | Malformed
+        | Invalid
+        | Obsolete
+        | Duplicate
+        | Nonstandard
+        | Dust
+        | InsufficientFee
+        | Checkpoint
+        | Unknown of int
+      [@@deriving compare, sexp]
+
+      let of_int = function
+        | 0x01 -> Malformed
+        | 0x10 -> Invalid
+        | 0x11 -> Obsolete
+        | 0x12 -> Duplicate
+        | 0x40 -> Nonstandard
+        | 0x41 -> Dust
+        | 0x42 -> InsufficientFee
+        | 0x43 -> Checkpoint
+        | i    -> Unknown i
+      ;;
+
+      let to_int = function
+        | Malformed       -> 0x01
+        | Invalid         -> 0x10
+        | Obsolete        -> 0x11
+        | Duplicate       -> 0x12
+        | Nonstandard     -> 0x40
+        | Dust            -> 0x41
+        | InsufficientFee -> 0x42
+        | Checkpoint      -> 0x43
+        | Unknown i       -> i
+      ;;
+    end
+
+    type t =
+      { message : string
+      ; code    : Reason.t
+      ; reason  : string
+      } [@@deriving compare, fields, sexp]
+  end
+
+  type t =
+    | Version    of Version.t
+    | VerAck
+    | Addr       of Addr.t
+    | GetAddr
+    | Inv        of Inventory.t
+    | GetData    of Inventory.t
+    | NotFound   of Inventory.t
+    | GetBlocks  of Getblocks.t
+    | GetHeaders of Getblocks.t
+    | Tx         of Transaction.t
+    | Block      of Block.t
+    | Headers    of Headers.t
+    | MemPool
+    | Ping       of Nonce.t
+    | Pong       of Nonce.t
+    | Reject     of Reject.t
+    | Alert      of Bitstring.t (* TODO: actually parse alerts and verify the signature *)
+    | Unknown    of Bitstring.t
+  [@@deriving compare, sexp]
+
+  let to_command : t -> Command.t = function
+    | Version _    -> Version
+    | VerAck       -> VerAck
+    | Addr _       -> Addr
+    | GetAddr      -> GetAddr
+    | Inv _        -> Inv
+    | GetData _    -> GetData
+    | NotFound _   -> NotFound
+    | GetBlocks _  -> GetBlocks
+    | GetHeaders _ -> GetHeaders
+    | Tx _         -> Tx
+    | Block _      -> Block
+    | Headers _    -> Headers
+    | MemPool      -> MemPool
+    | Ping _       -> Ping
+    | Pong _       -> Pong
+    | Reject _     -> Reject
+    | Alert _      -> Alert
+    | Unknown _    -> Unknown "UNKNOWN"
+end
+
+module Message = struct
+  type t =
+    { network : Magic.t
+    ; payload : Messages.t
+    } [@@deriving compare, fields, sexp]
+end

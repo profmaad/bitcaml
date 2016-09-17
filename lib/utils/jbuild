@@ -1,5 +1,8 @@
 (library
  ((name bitcaml_utils)
-  (libraries (core cryptokit))
+  (libraries (bitstring
+	      core
+	      cryptokit
+	      ))
   (preprocess (((pps (JANE)) All)))
   ))

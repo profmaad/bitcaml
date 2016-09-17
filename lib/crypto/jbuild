@@ -1,6 +1,11 @@
 (library
  ((name bitcoin_crypto)
-  (libraries (bitstring sha cryptokit microecc core))
+  (libraries (bitstring
+	      sha
+	      cryptokit
+	      microecc
+	      core
+	      ))
   (preprocess (((pps (JANE ppx_tools ppx_bitstring)) All)))
   (cclibs (microecc))
   ))

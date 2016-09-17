@@ -16,6 +16,9 @@ let initial_block_creation_fee_btc = 50L;;
 let initial_block_creation_fee = Int64.( * ) initial_block_creation_fee_btc coin_size;;
 let block_fee_reduction_interval = 210000L;;
 
+let coin_size = 100000000L;;
+let satoshis_per_bitoin = 100000000.0;;
+
 let legal_money_range i = (i >= 0L) && (i <= max_money);;
 
 let expected_new_difficulty old_difficulty actual_timespan =
