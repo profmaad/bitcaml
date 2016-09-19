@@ -1,9 +1,6 @@
 (library
  ((name bitcoin_protocol)
   (libraries (bitstring
-	      sha
-	      cryptokit
-	      microecc
 	      core
 	      bitcaml_utils
 	      bitcoin_crypto))
