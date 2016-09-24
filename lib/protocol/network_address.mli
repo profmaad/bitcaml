@@ -1,8 +1,8 @@
 open! Core.Std
 
-type t [@@deriving compare, sexp]
+type t [@@deriving bin_io, compare, sexp]
 
-include Bitstringable.S with type t := t
+include Bitcaml_utils.Std.Bitstringable with type t := t
 
 val create
   :  services:Service.Set.t

@@ -5,7 +5,7 @@ type t =
   { services : Service.Set.t
   ; host     : Bitstring.t
   ; port     : int
-  } [@@deriving compare, fields, sexp]
+  } [@@deriving bin_io, compare, fields, sexp]
 
 let create = Fields.create
 

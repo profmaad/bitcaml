@@ -5,7 +5,7 @@ type t =
   | TestNet
   | TestNet3
   | Other of int32
-[@@deriving compare, sexp]
+[@@deriving bin_io, compare, sexp]
 
 let of_int32 = function
   | 0xD9B4BEF9l -> MainNetwork

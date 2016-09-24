@@ -1,5 +1,6 @@
 open! Core.Std
 open Bitcaml_utils.Std
+open Bitcoin_crypto.Std
 open Common
 
 module Version = struct
@@ -13,7 +14,7 @@ module Version = struct
     ; user_agent       : string option
     ; start_height     : int32 option
     ; relay            : bool option
-    } [@@deriving compare, fields, sexp]
+    } [@@deriving bin_io, compare, fields, sexp]
 
   let of_bitstring_v0 = function%bitstring
     | {| protocol_version :  4*8 : littleendian
@@ -131,7 +132,7 @@ module Addr = struct
     type t =
       { timestamp : Time.t option
       ; address   : Network_address.t
-      } [@@deriving compare, fields, sexp]
+      } [@@deriving bin_io, compare, fields, sexp]
 
     let of_bitstring ~includes_timestamp bits =
       let timestamp_length = if includes_timestamp then 4*8 else 0 in
@@ -166,7 +167,7 @@ module Addr = struct
     ;;
   end
 
-  type t = Item.t list [@@deriving compare, sexp]
+  type t = Item.t list [@@deriving bin_io, compare, sexp]
 
   let of_bitstring ~protocol_version bits =
     let includes_timestamp = protocol_version >= 31402l in
@@ -185,7 +186,7 @@ module Inventory = struct
         | Transaction
         | Block
         | Other of int32
-      [@@deriving compare, sexp]
+      [@@deriving bin_io, compare, sexp]
 
       let of_int32 = function
         | 0x1l -> Transaction
@@ -202,8 +203,8 @@ module Inventory = struct
 
     type t =
       { type_ : Type.t
-      ; hash  : string
-      } [@@deriving compare, fields, sexp]
+      ; hash  : Hash_string.t
+      } [@@deriving bin_io, compare, fields, sexp]
 
     let of_bitstring = function%bitstring
       | {| type_ :  4*8 : littleendian
@@ -213,7 +214,7 @@ module Inventory = struct
         let t =
           Fields.create
             ~type_:(Type.of_int32 type_)
-            ~hash
+            ~hash:(Hash_string.of_bytes hash)
         in
         t, rest
       | {| _ |} -> failwith "invalid inventory list item"
@@ -221,14 +222,15 @@ module Inventory = struct
 
     let to_bitstring t =
       let type_ = Type.to_int32 t.type_ in
+      let hash  = Hash_string.to_bytes t.hash in
       [%bitstring
-        {| type_  : 4*8 : littleendian
-         ; t.hash : 32*8 : string
+        {| type_ : 4*8 : littleendian
+         ; hash  : 32*8 : string
         |}]
     ;;
   end
 
-  type t = Item.t list [@@deriving compare, sexp]
+  type t = Item.t list [@@deriving bin_io, compare, sexp]
 
   let of_bitstring bits =
     Varlist.of_bitstring
@@ -242,9 +244,9 @@ end
 module Getblocks = struct
   type t =
     { version   : int32
-    ; hashes    : string list
-    ; hash_stop : string
-    } [@@deriving compare, fields, sexp]
+    ; hashes    : Hash_string.t list
+    ; hash_stop : Hash_string.t
+    } [@@deriving bin_io, compare, fields, sexp]
 
   let of_bitstring bits =
     let version, bits =
@@ -259,6 +261,7 @@ module Getblocks = struct
         ~element_of_bitstring:(Varlist.fixed_length_string_of_bitstring ~name:"block locator hash" ~length:32)
         bits
     in
+    let hashes = List.map hashes ~f:Hash_string.of_bytes in
     match%bitstring bits with
     | {| hash_stop : 32*8 : string
        ; rest      :   -1 : bitstring
@@ -267,7 +270,7 @@ module Getblocks = struct
         Fields.create
           ~version
           ~hashes
-          ~hash_stop
+          ~hash_stop:(Hash_string.of_bytes hash_stop)
       in
       t, rest
     | {| _ |} -> failwith "invalid block locator"
@@ -275,20 +278,21 @@ module Getblocks = struct
 
   let to_bitstring t =
     let hashes =
-      Varlist.to_bitstring
+      List.map t.hashes ~f:Hash_string.to_bytes
+      |> Varlist.to_bitstring
         ~bitstring_of_element:(Varlist.fixed_length_string_to_bitstring ~length:32)
-        t.hashes
     in
+    let hash_stop = Hash_string.to_bytes t.hash_stop in
     [%bitstring
-      {| t.version   :  4*8 : littleendian
-       ; hashes      :   -1 : bitstring
-       ; t.hash_stop : 32*8 : string
+      {| t.version :  4*8 : littleendian
+       ; hashes    :   -1 : bitstring
+       ; hash_stop : 32*8 : string
       |}]
   ;;
 end
 
 module Headers = struct
-  type t = Block.Protocol_header.t list [@@deriving compare, sexp]
+  type t = Block.Protocol_header.t list [@@deriving bin_io, compare, sexp]
 
   let of_bitstring bits =
     Varlist.of_bitstring ~element_of_bitstring:Block.Protocol_header.of_bitstring bits
@@ -303,7 +307,7 @@ end
 module Nonce = struct
   type t =
     { nonce : int64
-    } [@@deriving compare, fields, sexp]
+    } [@@deriving bin_io, compare, fields, sexp]
 
   let of_bitstring = function%bitstring
     | {| nonce : 8*8 : littleendian
@@ -330,7 +334,7 @@ module Reject = struct
       | InsufficientFee
       | Checkpoint
       | Other of int
-    [@@deriving compare, sexp]
+    [@@deriving bin_io, compare, sexp]
 
     let of_int = function
       | 0x01 -> Malformed
@@ -362,7 +366,7 @@ module Reject = struct
     ; code    : Reason.t
     ; reason  : string
     ; data    : Bitstring.t
-    } [@@deriving compare, fields, sexp]
+    } [@@deriving bin_io, compare, fields, sexp]
 
   let of_bitstring bits =
     let message, bits = Varstring.of_bitstring ~name:"reject message" bits in
@@ -421,7 +425,7 @@ module Command = struct
     | FilterClear
     | MerkleBlock
     | Other of string
-  [@@deriving compare, sexp]
+  [@@deriving bin_io, compare, sexp]
 
   let of_string s =
     Utils.string_of_zeroterminated_string s
@@ -500,7 +504,7 @@ module Payload = struct
     | FilterClear of Bitstring.t (* TODO: parse *)
     | MerkleBlock of Bitstring.t (* TODO: parse *)
     | Other       of { command : string; payload: Bitstring.t }
-  [@@deriving compare, sexp]
+  [@@deriving bin_io, compare, sexp]
 
   let to_command : t -> Command.t = function
     | Version _                    -> Version
@@ -582,11 +586,12 @@ end
 type t =
   { network : Magic.t
   ; payload : Payload.t
-  } [@@deriving compare, fields, sexp]
+  } [@@deriving bin_io, compare, fields, sexp]
 
 let verify_checksum ~checksum ~payload =
-  Bitstring.string_of_bitstring payload
-  |> Bitcoin_crypto.Std.Hashing.message_checksum
+  Bitstring.to_string payload
+  |> Hash_string.message_checksum
+  |> Hash_string.to_bytes
   |> String.equal checksum
 ;;
 
@@ -626,8 +631,9 @@ let to_bitstring t =
     |> Int32.of_int_exn
   in
   let checksum =
-    Bitstring.string_of_bitstring payload
-    |> Bitcoin_crypto.Std.Hashing.message_checksum
+    Bitstring.to_string payload
+    |> Hash_string.message_checksum
+    |> Hash_string.to_bytes
   in
   [%bitstring
     {| magic    :  4*8 : littleendian

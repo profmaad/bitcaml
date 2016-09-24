@@ -39,5 +39,9 @@ let verify_der_signature ~public_key ~hash ~der_signature =
   |> parse_der_signature
   |> Option.value_map ~default:false ~f:(fun (r, s) ->
       let signature = (ensure_string_length ~len:32 r) ^ (ensure_string_length ~len:32 s) in
-      Microecc.verify curve ~public_key ~hash ~signature)
+      Microecc.verify
+        curve
+        ~public_key
+        ~hash:(Hash_string.to_bytes hash)
+        ~signature)
 ;;

@@ -1,4 +1,6 @@
 open! Core.Std
+open Bitcaml_utils.Std
+open Bitcoin_crypto.Std
 open Common
 
 module Lock_time = struct
@@ -6,7 +8,7 @@ module Lock_time = struct
     | AlwaysLocked
     | BlockLocked     of int32
     | TimestampLocked of Time.t
-  [@@deriving compare, sexp]
+  [@@deriving bin_io, compare, sexp]
 
 
   let of_int32 = function
@@ -26,9 +28,17 @@ end
 
 module Outpoint = struct
   type t =
-    { referenced_transaction_hash : string
+    { referenced_transaction_hash : Hash_string.t
     ; index                       : int32
-    } [@@deriving compare, fields, sexp]
+    } [@@deriving bin_io, compare, fields, sexp]
+
+  let create = Fields.create
+
+  let update ?referenced_transaction_hash ?index t =
+    Fields.create
+      ~referenced_transaction_hash:(Option.value ~default:t.referenced_transaction_hash referenced_transaction_hash)
+      ~index:                      (Option.value ~default:t.index index)
+  ;;
 
   let of_bitstring = function%bitstring
     | {| hash  : 32*8 : string
@@ -37,7 +47,7 @@ module Outpoint = struct
       |} ->
       let t =
         Fields.create
-          ~referenced_transaction_hash:hash
+          ~referenced_transaction_hash:(Hash_string.of_bytes hash)
           ~index
       in
       t, rest
@@ -45,9 +55,10 @@ module Outpoint = struct
   ;;
 
   let to_bitstring t =
+    let hash = Hash_string.to_bytes t.referenced_transaction_hash in
     [%bitstring
-      {| t.referenced_transaction_hash : 32*8 : string
-       ; t.index                       :  4*8 : littleendian
+      {| hash    : 32*8 : string
+       ; t.index :  4*8 : littleendian
       |}]
   ;;
 end
@@ -57,7 +68,16 @@ module Input = struct
     { previous_output  : Outpoint.t
     ; signature_script : string
     ; sequence_number  : int32
-    } [@@deriving compare, fields, sexp]
+    } [@@deriving bin_io, compare, fields, sexp]
+
+  let create = Fields.create
+
+  let update ?previous_output ?signature_script ?sequence_number t =
+    Fields.create
+    ~previous_output: (Option.value ~default:t.previous_output  previous_output)
+    ~signature_script:(Option.value ~default:t.signature_script signature_script)
+    ~sequence_number: (Option.value ~default:t.sequence_number  sequence_number)
+  ;;
 
   let of_bitstring bits =
     let previous_output, bits = Outpoint.of_bitstring bits in
@@ -91,7 +111,15 @@ module Output = struct
   type t =
     { value  : int64
     ; script : string
-    } [@@deriving compare, fields, sexp]
+    } [@@deriving bin_io, compare, fields, sexp]
+
+  let create = Fields.create
+
+  let update ?value ?script t =
+    Fields.create
+      ~value: (Option.value ~default:t.value  value)
+      ~script:(Option.value ~default:t.script script)
+  ;;
 
   let of_bitstring bits =
     let value, bits =
@@ -121,10 +149,20 @@ end
 
 type t =
   { version   : int32
-  ; inputs    : Input.t list
-  ; outputs   : Output.t list
+  ; inputs    : Input.t  Int.Map.t
+  ; outputs   : Output.t Int.Map.t
   ; lock_time : Lock_time.t
-  } [@@deriving compare, fields, sexp]
+  } [@@deriving bin_io, compare, fields, sexp]
+
+let create = Fields.create
+
+let update ?version ?inputs ?outputs ?lock_time t =
+  Fields.create
+    ~version:  (Option.value ~default:t.version   version)
+    ~inputs:   (Option.value ~default:t.inputs    inputs)
+    ~outputs:  (Option.value ~default:t.outputs   outputs)
+    ~lock_time:(Option.value ~default:t.lock_time lock_time)
+;;
 
 let of_bitstring bits =
   let version, bits =
@@ -143,8 +181,8 @@ let of_bitstring bits =
     let t =
       Fields.create
         ~version
-        ~inputs
-        ~outputs
+        ~inputs:(Index_map.of_list inputs)
+        ~outputs:(Index_map.of_list outputs)
         ~lock_time:(Lock_time.of_int32 lock_time)
     in
     t, rest
@@ -152,8 +190,14 @@ let of_bitstring bits =
 ;;
 
 let to_bitstring t =
-  let inputs  = Varlist.to_bitstring ~bitstring_of_element:Input.to_bitstring  t.inputs  in
-  let outputs = Varlist.to_bitstring ~bitstring_of_element:Output.to_bitstring t.outputs in
+  let inputs  =
+    Index_map.to_list t.inputs
+    |> Varlist.to_bitstring ~bitstring_of_element:Input.to_bitstring
+  in
+  let outputs =
+    Index_map.to_list t.outputs
+    |> Varlist.to_bitstring ~bitstring_of_element:Output.to_bitstring
+  in
   let lock_time = Lock_time.to_int32 t.lock_time in
   [%bitstring
     {| t.version : 4*8 :littleendian
@@ -165,6 +209,6 @@ let to_bitstring t =
 
 let hash t =
   to_bitstring t
-  |> Bitstring.string_of_bitstring
-  |> Bitcoin_crypto.Std.Hashing.hash256
+  |> Bitstring.to_string
+  |> Hash_string.hash256
 ;;

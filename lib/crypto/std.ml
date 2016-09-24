@@ -1,2 +1,2 @@
-module Ecdsa   = Ecdsa
-module Hashing = Hashing
+module Ecdsa       = Ecdsa
+module Hash_string = Hash_string

@@ -1,13 +1,13 @@
 open! Core.Std
 
 module Varint : sig
-  type t = int64 [@@deriving compare, sexp]
+  type t = int64 [@@deriving bin_io, compare, sexp]
 
-  include Bitstringable.S with type t := t
+  include Bitcaml_utils.Std.Bitstringable with type t := t
 end
 
 module Varstring : sig
-  type t = string [@@deriving compare, sexp]
+  type t = string [@@deriving bin_io, compare, sexp]
 
   val to_bitstring : t -> Bitstring.t
 
@@ -38,4 +38,11 @@ module Varlist : sig
     :  bitstring_of_element:('a -> Bitstring.t)
     -> 'a list
     -> Bitstring.t
+end
+
+module Index_map : sig
+  type 'a t = 'a Int.Map.t [@@deriving bin_io, compare, sexp]
+
+  val of_list : 'a list -> 'a t
+  val to_list : 'a t -> 'a list
 end

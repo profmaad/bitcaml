@@ -3,11 +3,11 @@ open! Core.Std
 module T = struct
   type t =
     | NetworkNode
-  [@@deriving compare, enumerate, sexp]
+  [@@deriving bin_io, compare, enumerate, sexp]
 end
 include T
 
-include Comparable.Make(T)
+include Comparable.Make_binable(T)
 
 let to_bitmask = function
   | NetworkNode -> 0x0000000000000001L

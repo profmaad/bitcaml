@@ -1,10 +1,10 @@
 (library
  ((name bitcoin_blockchain)
   (libraries (core
+	      bignum
 	      bitcaml_utils
 	      bitcoin_protocol
 	      bitcoin_script
-	      sqlexpr
-	      sqlexpr.ppx))
-  (preprocess (((pps (JANE ppx_tools re.pcre sqlexpr.ppx)) All)))
+	      bitcoin_crypto))
+  (preprocess (((pps (JANE)) All)))
   ))

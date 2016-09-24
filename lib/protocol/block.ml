@@ -1,11 +1,15 @@
 open! Core.Std
+open Bitcaml_utils.Std
+open Bitcoin_crypto.Std
 open Common
 
 module Difficulty = struct
   type t =
     { base     : int32
     ; exponent : int32
-    } [@@deriving compare, fields, sexp]
+    } [@@deriving bin_io, compare, fields, sexp]
+
+  let create = Fields.create
 
   let of_int32 i =
     Fields.create
@@ -17,17 +21,52 @@ module Difficulty = struct
     let exponent = Int32.shift_left (exponent t) 24 in
     Int32.bit_or exponent (base t)
   ;;
+
+  let difficulty_1_target =
+    create
+      ~base:0x00ffffl
+      ~exponent:0x1dl
+  ;;
+
+  let log_difficulty_1_base =
+    Int32.to_float difficulty_1_target.base
+    |> log
+  ;;
+
+  let log_difficulty_scalar = log 256.0
+
+  let log_difficulty t =
+    let log_base =
+      Int32.to_float t.base
+      |> log
+    in
+    let exponent_difference =
+      Int32.(difficulty_1_target.exponent - t.exponent)
+      |> Int32.to_float
+    in
+    log_difficulty_1_base
+    -. log_base
+    +. log_difficulty_scalar
+    *. exponent_difference
+  ;;
+
+  let to_float t =
+    log_difficulty t
+    |> exp
+  ;;
 end
 
 module Header = struct
   type t =
     { version             : int32
-    ; previous_block_hash : string
-    ; merkle_root         : string
+    ; previous_block_hash : Hash_string.t
+    ; merkle_root         : Hash_string.t
     ; timestamp           : Time.t
     ; difficulty_target   : Difficulty.t
     ; nonce               : int32
-    } [@@deriving compare, fields, sexp]
+    } [@@deriving bin_io, compare, fields, sexp]
+
+  let create = Fields.create
 
   let of_bitstring = function%bitstring
     | {| version             :  4*8 : littleendian
@@ -41,8 +80,8 @@ module Header = struct
       let t =
         Fields.create
           ~version
-          ~previous_block_hash
-          ~merkle_root
+          ~previous_block_hash:(Hash_string.of_bytes previous_block_hash)
+          ~merkle_root:(Hash_string.of_bytes merkle_root)
           ~timestamp:(Int32.to_float timestamp |> Time.of_epoch)
           ~difficulty_target:(Difficulty.of_int32 difficulty_target)
           ~nonce
@@ -52,12 +91,14 @@ module Header = struct
   ;;
 
   let to_bitstring t =
+    let previous_block_hash = Hash_string.to_bytes t.previous_block_hash in
+    let merkle_root = Hash_string.to_bytes t.merkle_root in
     let timestamp = Time.to_epoch t.timestamp |> Int32.of_float in
     let difficulty_target = Difficulty.to_int32 t.difficulty_target in
     [%bitstring
       {| t.version             :  4*8 : littleendian
-       ; t.previous_block_hash : 32*8 : string
-       ; t.merkle_root         : 32*8 : string
+       ; previous_block_hash   : 32*8 : string
+       ; merkle_root           : 32*8 : string
        ; timestamp             :  4*8 : littleendian
        ; difficulty_target     :  4*8 : littleendian
        ; t.nonce               :  4*8 : littleendian
@@ -69,7 +110,7 @@ module Protocol_header = struct
   type t =
     { header            : Header.t
     ; transaction_count : int64
-    } [@@deriving compare, fields, sexp]
+    } [@@deriving bin_io, compare, fields, sexp]
 
   let of_bitstring bits =
     let header, bits = Header.of_bitstring bits in
@@ -95,7 +136,9 @@ end
 type t =
   { header       : Header.t
   ; transactions : Transaction.t list
-  } [@@deriving compare, fields, sexp]
+  } [@@deriving bin_io, compare, fields, sexp]
+
+let create = Fields.create
 
 let of_bitstring bits =
   let header, bits = Header.of_bitstring bits in
@@ -127,6 +170,6 @@ let to_bitstring t =
 
 let hash t =
   to_bitstring t
-  |> Bitstring.string_of_bitstring
-  |> Bitcoin_crypto.Std.Hashing.hash256
+  |> Bitstring.to_string
+  |> Hash_string.hash256
 ;;

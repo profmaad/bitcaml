@@ -5,7 +5,7 @@ type t =
   | TestNet
   | TestNet3
   | Other of int32
-[@@deriving compare, sexp]
+[@@deriving bin_io, compare, sexp]
 
 val of_int32 : int32 -> t
 val to_int32 : t -> int32

@@ -1,7 +1,7 @@
 open! Core.Std
 
 module Varint = struct
-  type t = int64 [@@deriving compare, sexp]
+  type t = int64 [@@deriving bin_io, compare, sexp]
 
   let of_bitstring bits =
     let parse_value bits size =
@@ -51,7 +51,7 @@ module Varint = struct
 end
 
 module Varstring = struct
-  type t = string [@@deriving compare, sexp]
+  type t = string [@@deriving bin_io, compare, sexp]
 
   (* we should support strings with the full length of MAX(int64)
      bytes, but due to bitstring requiring the length in BITS in an
@@ -119,5 +119,19 @@ module Varlist = struct
       {| length   : -1 : bitstring
        ; elements : -1 : bitstring
       |}]
+  ;;
+end
+
+module Index_map = struct
+  type 'a t = 'a Int.Map.t [@@deriving bin_io, compare, sexp]
+
+  let of_list ls =
+    List.foldi ls ~init:Int.Map.empty ~f:(fun key map data ->
+      Map.add map ~key ~data)
+  ;;
+
+  let to_list t =
+    Map.to_alist ~key_order:`Increasing t
+    |> List.map ~f:snd
   ;;
 end

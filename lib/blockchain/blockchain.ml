@@ -1,35 +1,34 @@
 open! Core.Std
 open Bitcaml_utils.Std
-open Rules
 open Bitcoin_protocol.Std
-open Types
-module Script_parser = Bitcoin_script.Std.Parser
-module Script_types = Bitcoin_script.Std.Types
+open Bitcoin_script.Std
+open Rules
 
-exception Rejected of string * rejection_reason;;
-exception BlockIsOrphan;;
-exception BlockIsDuplicate;;
-exception TransactionIsOrphan;;
+module Block_type = struct
+  type t =
+    | Sidechain
+    | Mainchain
+    | NewMainchain
+  [@@deriving compare, enumerate, sexp]
+end
 
-type block_type =
-| Sidechain
-| Mainchain
-| NewMainchain
-;;
+module Blockchain = struct
+  type t =
+    { database      : Database.t
+    ; block_storage : Block_storage.t
+    } [@@deriving fields]
 
-type blockchain = {
-  db : Db.t;
-  blockstorage : Blockstorage.t;
-}
-type t = blockchain;;
-
-let init_default path =
-  Utils.mkdir_maybe path 0o755;
-  {
-    db = Db.open_db (path ^ "blockchain.sqlite3");
-    blockstorage = Blockstorage.init_default (path ^ "blocks/")
-  }
-;;
+  let init
+        ?(database="blockchain.sqlite3")
+        ?(block_storage="blocks")
+        root_path
+    =
+    Unix.mkdir_p ~perm:0o755 path;
+    Fields.create
+      ~database:(Database.open_db (root_path ^/ database))
+      ~block_storage:(Block_storage.init (root_path ^/ block_storage))
+  ;;
+end
 
 let tx_total_output_value tx =
   List.fold_left ~init:0L ~f:Int64.(+) (List.map ~f:(fun txout -> txout.transaction_output_value) tx.transaction_outputs)
