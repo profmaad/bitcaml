@@ -1,6 +1,7 @@
 (library
  ((name bitcoin_crypto)
   (libraries (bitstring
+	      bignum
 	      sha
 	      cryptokit
 	      microecc

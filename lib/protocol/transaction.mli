@@ -1,4 +1,5 @@
 open! Core.Std
+open Bitcaml_utils.Std
 open Bitcoin_crypto.Std
 
 module Lock_time : sig
@@ -16,7 +17,8 @@ end
 module Outpoint : sig
   type t [@@deriving bin_io, compare, sexp]
 
-  include Bitcaml_utils.Std.Bitstringable with type t := t
+  include Bitstringable        with type t := t
+  include Comparable.S_binable with type t := t
 
   val create
     :  referenced_transaction_hash:Hash_string.t
@@ -36,7 +38,7 @@ end
 module Input : sig
   type t [@@deriving bin_io, compare, sexp]
 
-  include Bitcaml_utils.Std.Bitstringable with type t := t
+  include Bitstringable with type t := t
 
   val create
     :  previous_output:Outpoint.t
@@ -59,7 +61,7 @@ end
 module Output : sig
   type t [@@deriving bin_io, compare, sexp]
 
-  include Bitcaml_utils.Std.Bitstringable with type t := t
+  include Bitstringable with type t := t
 
   val create
     :  value:int64
@@ -78,7 +80,8 @@ end
 
 type t [@@deriving bin_io, compare, sexp]
 
-include Bitcaml_utils.Std.Bitstringable with type t := t
+include Bitstringable with type t := t
+include Validation.S  with type t := t
 
 val create
   :  version:int32
@@ -101,3 +104,5 @@ val outputs   : t -> Output.t Int.Map.t
 val lock_time : t -> Lock_time.t
 
 val hash : t -> Hash_string.t
+
+val total_output_value : t -> int64

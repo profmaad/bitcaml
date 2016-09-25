@@ -12,9 +12,9 @@ module Lock_time = struct
 
 
   let of_int32 = function
-    | 0x0l                    -> AlwaysLocked
-    | i when (i < 500000000l) -> BlockLocked i
-    | i                       -> TimestampLocked (Int32.to_float i |> Time.of_epoch)
+    | 0x0l                          -> AlwaysLocked
+    | i when Int32.(i < 500000000l) -> BlockLocked i
+    | i                             -> TimestampLocked (Int32.to_float i |> Time.of_epoch)
   ;;
 
   let to_int32 = function
@@ -27,10 +27,15 @@ module Lock_time = struct
 end
 
 module Outpoint = struct
-  type t =
-    { referenced_transaction_hash : Hash_string.t
-    ; index                       : int32
-    } [@@deriving bin_io, compare, fields, sexp]
+  module T = struct
+    type t =
+      { referenced_transaction_hash : Hash_string.t
+      ; index                       : int32
+      } [@@deriving bin_io, compare, fields, sexp]
+  end
+  include T
+
+  include Comparable.Make_binable(T)
 
   let create = Fields.create
 
@@ -212,3 +217,49 @@ let hash t =
   |> Bitstring.to_string
   |> Hash_string.hash256
 ;;
+
+let total_output_value t =
+  Map.fold t.outputs ~init:0L ~f:(fun ~key:_ ~data:output acc ->
+    Int64.(+) acc (Output.value output))
+;;
+
+module Predicates = struct
+  open Bitcoin_consensus.Std
+
+  type nonrec t = t [@@deriving sexp_of]
+
+  let empty_inputs  t = not (Map.is_empty t.inputs)
+  let empty_outputs t = not (Map.is_empty t.outputs)
+
+  let max_size t =
+    let script_length_bits =
+      to_bitstring t
+      |> Bitstring.bitstring_length
+      |> Int64.of_int
+    in
+    Int64.(script_length_bits / 8L >= Constants.max_block_size)
+  ;;
+
+  let output_values t =
+    Map.exists t.outputs ~f:(fun output ->
+      Int64.is_negative (Output.value output)
+      || Int64.(>) (Output.value output) Constants.max_money)
+  ;;
+
+  let total_output_value t =
+    let value = total_output_value t in
+    Int64.is_negative value
+    || Int64.(>) value Constants.max_money
+  ;;
+
+  let predicates =
+    [ "bad-txns-vin-empty"                , empty_inputs
+    ; "bad-txns-vout-empty"               , empty_outputs
+    ; "bad-txns-oversize"                 , max_size
+    ; "bad-txns-vout-notlegalmoney"       , output_values
+    ; "bad-txns-txouttotal-notlegalmoney" , total_output_value
+    ]
+  ;;
+end
+
+include Validation.Make(Predicates)

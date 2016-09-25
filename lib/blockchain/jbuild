@@ -5,6 +5,7 @@
 	      bitcaml_utils
 	      bitcoin_protocol
 	      bitcoin_script
-	      bitcoin_crypto))
+	      bitcoin_crypto
+	      bitcoin_consensus))
   (preprocess (((pps (JANE)) All)))
   ))

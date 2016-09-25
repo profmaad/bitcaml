@@ -1,4 +1,5 @@
 open! Core.Std
+open Bignum.Std
 open Bitcoin_crypto.Std
 
 module Difficulty : sig
@@ -15,7 +16,8 @@ module Difficulty : sig
   val of_int32 : int32 -> t
   val to_int32 : t -> int32
 
-  val to_float : t -> float
+  val to_float  : t -> float
+  val to_bigint : t -> Bigint.t
 end
 
 module Header : sig
@@ -62,3 +64,5 @@ val header       : t -> Header.t
 val transactions : t -> Transaction.t list
 
 val hash : t -> Hash_string.t
+
+val calculate_merkle_root : t -> Hash_string.t

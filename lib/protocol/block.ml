@@ -1,4 +1,5 @@
 open! Core.Std
+open Bignum.Std
 open Bitcaml_utils.Std
 open Bitcoin_crypto.Std
 open Common
@@ -53,6 +54,16 @@ module Difficulty = struct
   let to_float t =
     log_difficulty t
     |> exp
+  ;;
+
+  let to_bigint t =
+    let base = Bigint.of_int32 t.base in
+    let exponent =
+      Int32.(8l * (t.exponent - 3l))
+      |> Bigint.of_int32
+      |> Bigint.pow (Bigint.of_int 2)
+    in
+    Bigint.(base * exponent)
   ;;
 end
 
@@ -172,4 +183,9 @@ let hash t =
   to_bitstring t
   |> Bitstring.to_string
   |> Hash_string.hash256
+;;
+
+let calculate_merkle_root t =
+  List.map t.transactions ~f:Transaction.hash
+  |> Hash_string.merkle_tree_hash
 ;;

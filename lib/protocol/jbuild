@@ -1,8 +1,10 @@
 (library
  ((name bitcoin_protocol)
   (libraries (bitstring
+	      bignum
 	      core
 	      bitcaml_utils
-	      bitcoin_crypto))
+	      bitcoin_crypto
+	      bitcoin_consensus))
   (preprocess (((pps (JANE ppx_tools ppx_bitstring)) All)))
   ))

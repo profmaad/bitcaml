@@ -1,0 +1,6 @@
+(library
+ ((name bitcoin_consensus)
+  (libraries (bignum
+	      core))
+  (preprocess (((pps (JANE)) All)))
+  ))

@@ -1,4 +1,5 @@
 open! Core.Std
+open Bignum.Std
 open Cryptokit
 
 include String
@@ -52,4 +53,9 @@ let rec merkle_tree_hash hashes =
     create_row [] hashes
     |> List.rev
     |> merkle_tree_hash
+;;
+
+let to_bigint t =
+  sprintf !"0x%{}" t
+  |> Bigint.of_string
 ;;

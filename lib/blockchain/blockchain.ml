@@ -4,44 +4,27 @@ open Bitcoin_protocol.Std
 open Bitcoin_script.Std
 open Rules
 
-module Block_type = struct
-  type t =
-    | Sidechain
-    | Mainchain
-    | NewMainchain
-  [@@deriving compare, enumerate, sexp]
-end
+open Blockchain0
 
 module Blockchain = struct
   type t =
-    { database      : Database.t
-    ; block_storage : Block_storage.t
+    { mutable blockchain : Blockchain0.t
+    ; block_storage      : Block_storage.t
     } [@@deriving fields]
 
   let init
-        ?(database="blockchain.sqlite3")
         ?(block_storage="blocks")
-        root_path
+        ~network
+        ~root_path
     =
-    Unix.mkdir_p ~perm:0o755 path;
+    let genesis_header = Genesis_block.header network in
+    let genesis_hash   = Genesis_block.hash   network in
+    Unix.mkdir_p ~perm:0o755 root_path;
     Fields.create
-      ~database:(Database.open_db (root_path ^/ database))
-      ~block_storage:(Block_storage.init (root_path ^/ block_storage))
+      ~blockchain:(Blockchain0.empty ~genesis_header ~genesis_hash)
+      ~block_storage:(Block_storage.create (root_path ^/ block_storage))
   ;;
 end
-
-let tx_total_output_value tx =
-  List.fold_left ~init:0L ~f:Int64.(+) (List.map ~f:(fun txout -> txout.transaction_output_value) tx.transaction_outputs)
-;;
-
-(* tx rules 2-4 of https://en.bitcoin.it/wiki/Protocol_rules *)
-let verify_basic_transaction_rules tx =
-  if (List.length tx.transaction_inputs) = 0 then raise (Rejected ("bad-txns-vin-empty", RejectionInvalid));
-  if (List.length tx.transaction_outputs) = 0 then raise (Rejected ("bad-txns-vout-empty", RejectionInvalid));
-  if ((Bitstring.bitstring_length (Generator.bitstring_of_transaction tx)) / 8) >= max_block_size then raise (Rejected ("bad-txns-oversize", RejectionInvalid));
-  if not (List.for_all ~f:transaction_output_in_legal_money_range tx.transaction_outputs) then raise (Rejected ("bad-txns-vout-notlegalmoney", RejectionInvalid));
-  if not (legal_money_range (tx_total_output_value tx)) then raise (Rejected ("bad-txns-txouttotal-notlegalmoney", RejectionInvalid));
-;;
 
 let scripts_of_transaction tx =
   let script_of_txin txin = Script_parser.parse_script (Bitstring.bitstring_of_string txin.signature_script) in
@@ -89,15 +72,6 @@ let verify_transaction_script (tx, txin_index) signature_script output_script =
     if not (Script_types.bool_of_data_item item) then raise (Rejected ("mandatory-script-verify-flag-failed", RejectionInvalid))
   | Invalid -> raise (Rejected ("mandatory-script-verify-flag-failed", RejectionInvalid))
 ;;
-
-module TxOut = struct
-  module T = struct
-    type t = string * int32 [@@deriving compare, sexp];;
-  end
-  include T
-
-  include Comparable.Make(T)
-end
 
 let tx_has_duplicate_txins tx =
   let rec add_outpoints_if_not_exists txoutmap = function
