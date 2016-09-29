@@ -40,6 +40,8 @@ module Header : sig
   val timestamp           : t -> Time.t
   val difficulty_target   : t -> Difficulty.t
   val nonce               : t -> int32
+
+  val hash : t -> Hash_string.t
 end
 
 module Protocol_header : sig

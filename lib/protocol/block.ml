@@ -115,6 +115,12 @@ module Header = struct
        ; t.nonce               :  4*8 : littleendian
       |}]
   ;;
+
+  let hash t =
+    to_bitstring t
+    |> Bigstring.to_string
+    |> Hash_string.hash256
+  ;;
 end
 
 module Protocol_header = struct
@@ -179,11 +185,7 @@ let to_bitstring t =
     |}]
 ;;
 
-let hash t =
-  to_bitstring t
-  |> Bitstring.to_string
-  |> Hash_string.hash256
-;;
+let hash t = Block.Header.hash t.header
 
 let calculate_merkle_root t =
   List.map t.transactions ~f:Transaction.hash

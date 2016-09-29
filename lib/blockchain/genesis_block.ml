@@ -32,3 +32,9 @@ let hash : Magic.t -> Hash_string.t = function
   | TestNet3 -> TestNet3.hash
   | magic    -> failwithf !"genesis block for %{sexp:Magic.t} not available" magic ()
 ;;
+
+let%test_unit "TestNet3" =
+  [%test_result: Hash_string.t]
+    ~expect:(hash TestNet3)
+    (Block.Header.hash (header TestNet3))
+;;

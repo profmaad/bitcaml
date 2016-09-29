@@ -135,6 +135,7 @@ let rec resolve_orphans t added_nodes =
 
 (* this assumes the block was verified, and thus is best effort
    instead of enforcing all inputs are unspent *)
+(* TODO: update this when the main chain changes *)
 let update_unspent_transaction_outputs t transaction =
   (* remove outputs being spent by this transactions inputs *)
   let hash = Transaction.hash transaction in

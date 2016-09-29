@@ -46,15 +46,6 @@ let debug peer = { peer with Peer.peer_debug = true };;
 let () =
   Random.self_init ();
 
-  print_string "Sanity testing genesis block against its own hash...\t";
-  let calculated_genesis_hash = Generator.block_hash Config.testnet3_genesis_block_header in
-  if calculated_genesis_hash = Config.testnet3_genesis_block_hash then
-    print_endline "PASSED"
-  else (
-    Printf.printf"FAILED: %s != %s\n" calculated_genesis_hash Config.testnet3_genesis_block_hash;
-    exit 1;
-  );
-
   print_string "Testing difficulty calculation...\t";
   let difficulty_test_results = [
     Db.log_difficulty_of_difficulty_bits { bits_base = 0x00ffff; bits_exponent = 0x1d; };
