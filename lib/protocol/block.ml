@@ -118,7 +118,7 @@ module Header = struct
 
   let hash t =
     to_bitstring t
-    |> Bigstring.to_string
+    |> Bitstring.to_string
     |> Hash_string.hash256
   ;;
 end
@@ -185,7 +185,7 @@ let to_bitstring t =
     |}]
 ;;
 
-let hash t = Block.Header.hash t.header
+let hash t = Header.hash t.header
 
 let calculate_merkle_root t =
   List.map t.transactions ~f:Transaction.hash

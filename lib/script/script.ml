@@ -1,4 +1,5 @@
 open! Core.Std
+open Bitcaml_utils.Std
 
 type t = Word.t list [@@deriving bin_io, compare, sexp]
 
@@ -58,7 +59,8 @@ let%test_unit "round trip" =
     Bitstring.of_string
       "\x76\xa9\x14\x2f\xef\x8e\xdc\xc4\x50\x19\xac\xba\x3b\xb1\x46\xb7\x6c\xbd\x2f\x84\x8b\xe5\xd6\x88\xac"
   in
-  let parsed = of_bitstring bits in
+  let parsed, rest = of_bitstring bits in
+  [%test_result: int] ~expect:0 (Bitstring.bitstring_length rest);
   [%test_result: t] ~expect:[] parsed;
   [%test_result: Bitstring.t] ~expect:bits (to_bitstring parsed)
 ;;
